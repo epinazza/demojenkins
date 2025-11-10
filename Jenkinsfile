@@ -1,14 +1,15 @@
 pipeline {
     agent any
-
     environment {
+        API_PORT = "8290"
         JMETER_RESULTS_DIR = "results"
-        DOCKER_IMAGE = "myapi-img:v1"
-        DOCKER_CONTAINER = "myapi-container"
-        DOCKER_NETWORK = "jenkins-net"
     }
-
     stages {
+        stage('Declarative: Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
 
         stage('Prepare') {
             steps {
@@ -20,7 +21,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image..."
-                sh "docker build -t ${DOCKER_IMAGE} ."
+                sh 'docker build -t myapi-img:v1 .'
             }
         }
 
@@ -28,8 +29,8 @@ pipeline {
             steps {
                 echo "🧹 Cleaning up old container (if any)..."
                 sh '''
-                docker stop ${DOCKER_CONTAINER} || true
-                docker rm ${DOCKER_CONTAINER} || true
+                    docker stop myapi-container || true
+                    docker rm myapi-container || true
                 '''
             }
         }
@@ -38,8 +39,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh '''
-                docker network create ${DOCKER_NETWORK} || true
-                docker run -d --name ${DOCKER_CONTAINER} --network ${DOCKER_NETWORK} -p 8290:8290 -p 8253:8253 ${DOCKER_IMAGE}
+                    docker network create jenkins-net || true
+                    docker run -d --name myapi-container --network jenkins-net -p ${API_PORT}:${API_PORT} -p 8253:8253 myapi-img:v1
                 '''
             }
         }
@@ -47,27 +48,38 @@ pipeline {
         stage('Wait for API Ready') {
             steps {
                 echo "⏳ Waiting for API to be ready..."
-                retry(10) {
+                retry(15) {
                     sh '''
-                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:8290/appointmentservices/getAppointment)
-                    if [ "$STATUS" -ne 200 ]; then
-                        echo "API not ready yet (HTTP $STATUS)"
-                        exit 1
-                    fi
+                        STATUS_CODE=\\$(curl -s -o /dev/null -w %{http_code} http://host.docker.internal:${API_PORT}/appointmentservices/getAppointment || echo 000)
+                        echo "HTTP status: \\$STATUS_CODE"
+                        if [ "\\$STATUS_CODE" != "200" ]; then
+                            echo "Waiting 2 seconds..."
+                            sleep 2
+                            exit 1
+                        fi
                     '''
                 }
             }
         }
 
+        stage('Check JMX File') {
+            steps {
+                echo "🔍 Checking if JMeter JMX file exists..."
+                sh '''
+                    if [ ! -f test2.jmx ]; then
+                        echo "JMX file not found!"
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
         stage('Load Test with JMeter') {
             steps {
-                echo "🚀 Running JMeter load test..."
-                sh 'mkdir -p ${JMETER_RESULTS_DIR}'
+                echo "🏋️ Running JMeter test..."
                 sh '''
-                docker run --rm -v $(pwd)/''' + "${JMETER_RESULTS_DIR}" + ''':/results justb4/jmeter:latest \
-                -n -t /tests/API_TestPlan.jmx \
-                -l /results/results.jtl \
-                -e -o /results/html
+                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/test2.jmx:/test2.jmx jmeter_image \
+                    jmeter -n -t /test2.jmx -l /results/results.jtl -e -o /results/report
                 '''
             }
         }
@@ -75,7 +87,12 @@ pipeline {
         stage('Evaluate Performance Threshold') {
             steps {
                 echo "📊 Evaluating performance..."
-                // Keep your existing threshold logic here
+                sh '''
+                    AVG_RESP=\\$(grep -E 'summary =' ${JMETER_RESULTS_DIR}/summary.txt | awk '{print $10}' | tail -n 1)
+                    echo "Average response time: \\$AVG_RESP"
+                    THRESHOLD=50
+                    awk -v avg="\\$AVG_RESP" -v th="$THRESHOLD" 'BEGIN { if (avg>th) exit 1 }'
+                '''
             }
         }
     }
@@ -84,8 +101,8 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker container..."
             sh '''
-            docker stop ${DOCKER_CONTAINER} || true
-            docker rm ${DOCKER_CONTAINER} || true
+                docker stop myapi-container || true
+                docker rm myapi-container || true
             '''
             echo "📦 Archiving JMeter report..."
             archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/**", allowEmptyArchive: true
