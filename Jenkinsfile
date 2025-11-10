@@ -85,20 +85,21 @@ pipeline {
                 // Debug: list workspace contents
                 sh "echo 'Contents of workspace:' && ls -l ${WORKSPACE}"
 
-                // Run JMeter container with workspace mounted
+                // Run JMeter container with correct permissions
                 sh """
                     docker run --rm --name jmeter-agent \
                         --network jenkins-net \
+                        -u root \
                         -v "${WORKSPACE}":/tests \
                         justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
+                        -n -t /tests/API_TestPlan.jmx \
+                        -l /tests/results/report.jtl
                 """
 
                 // Debug: list results folder after test
                 sh "echo 'Contents of results folder:' && ls -l ${WORKSPACE}/results"
             }
         }
-
 
         stage('Archive JMeter Report') {
             steps {
