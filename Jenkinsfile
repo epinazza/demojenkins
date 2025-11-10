@@ -64,7 +64,7 @@ pipeline {
             steps {
                 echo "📄 Checking JMX file..."
                 script {
-                    if (!fileExists('API_TestPlan.jmx')) {
+                    if (!fileExists('tests/API_TestPlan.jmx')) {
                         error "JMX file not found in workspace!"
                     }
                 }
@@ -96,7 +96,7 @@ pipeline {
                         -v ${env.WORKSPACE}:/tests \\
                         -w /tests \\
                         justb4/jmeter:latest \\
-                        -n -t API_TestPlan.jmx -l results/report.jtl
+                        -n -t tests/API_TestPlan.jmx -l results/report.jtl
                 """
             }
         }
