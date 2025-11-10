@@ -8,7 +8,7 @@ pipeline {
         NETWORK_NAME = "jenkins-net"
         RESULTS_DIR = "${WORKSPACE}/results"
         JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
-        API_URL = "http://host.docker.internal:8290/appointmentservices/getAppointment"
+        API_URL = "http://myapi-container:8290/appointmentservices/getAppointment"
     }
 
     stages {
@@ -61,16 +61,16 @@ pipeline {
                     int retries = 20
                     int count = 0
                     def status = "0"
-                    while (count < retries && status != "200") {
-                        status = sh(script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- http://${WSO2_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
+                    while (count < retries && status != "0") {
+                        status = sh(script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- ${API_URL} >/dev/null; echo \$?'", returnStdout: true).trim()
                         if (status == "0") {
-                            echo "Attempt ${count + 1}: API is ready (HTTP 200)"
+                            echo "Attempt ${count + 1}: API is ready"
                             break
                         } else {
                             echo "Attempt ${count + 1}: API not ready yet"
                             sleep 5
-                            count++
                         }
+                        count++
                     }
                     if (status != "0") {
                         error "API is not ready after ${retries * 5} seconds."
@@ -93,13 +93,16 @@ pipeline {
         stage('Run Load Test with JMeter') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                sh """
-                    docker run --rm --name ${JMETER_CONTAINER} --network ${NETWORK_NAME} \
-                        -v ${WORKSPACE}:/tests \
-                        -w /tests \
+                sh '''
+                    # Ensure results folder exists
+                    mkdir -p results
+
+                    # Run JMeter inside Docker
+                    docker run --rm --name jmeter-agent --network jenkins-net \
+                        -v ${WORKSPACE}:/tests -w /tests \
                         justb4/jmeter:latest \
-                        sh -c "mkdir -p /tests/results && jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl"
-                """
+                        jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                '''
             }
         }
 
