@@ -53,7 +53,7 @@ pipeline {
                 echo "⏳ Wait 30 seconds for WSO2 MI to fully start..."
                 sh """
                     sleep 30
-                    curl -I http://localhost:${PORT_1} || true
+                    docker exec ${CONTAINER_NAME} curl -I http://localhost:${PORT_1} || true
                 """
             }
         }
