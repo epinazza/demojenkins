@@ -68,7 +68,7 @@ pipeline {
                 script {
                     retry(10) {
                         def status = sh(
-                            script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- http://${API_CONTAINER_NAME}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
+                            script: "docker run --rm --network ${NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
                             returnStdout: true
                         ).trim()
                         if (status != "0") {
