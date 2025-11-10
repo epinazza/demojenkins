@@ -1,3 +1,0 @@
-FROM justb4/jmeter:latest
-WORKDIR /tests
-COPY ./API_TestPlan.jmx /tests/
