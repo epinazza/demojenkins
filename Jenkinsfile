@@ -89,9 +89,9 @@ pipeline {
                 sh """
                     docker run --rm --name jmeter-agent \
                         --network jenkins-net \
-                        -v "${WORKSPACE}":/tests \
+                        -v "${WORKSPACE}" \
                         justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
+                        -n -t /API_TestPlan.jmx -l /results/report.jtl
                 """
 
                 // Debug: list results folder after test
