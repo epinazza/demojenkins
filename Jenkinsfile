@@ -110,6 +110,7 @@ pipeline {
                     --network ${NETWORK} \
                     -v ${WORKSPACE}:/tests \
                     -v ${WORKSPACE}/${RESULTS_DIR}:/results \
+                    -u 0 \
                     ${JMETER_IMAGE} \
                     -n -t /tests/${JMX_FILE} -l /results/report.jtl
                 """
