@@ -88,7 +88,7 @@ pipeline {
                         --network jenkins-net \
                         -v ${WORKSPACE}:/tests \
                         justb4/jmeter:latest \
-                        jmeter -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
+                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
                 """
             }
         }
