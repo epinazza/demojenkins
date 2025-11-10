@@ -2,18 +2,15 @@ pipeline {
     agent any
 
     environment {
-        WSO2_IMAGE = "myapi-img:v1"
-        WSO2_CONTAINER = "myapi-container"
+        DOCKER_NET = "jenkins-net"
+        IMAGE_NAME = "myapi-img:v1"
+        CONTAINER_NAME = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
-        NETWORK_NAME = "jenkins-net"
-        RESULTS_DIR = "${WORKSPACE}/results"
-        JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
-        API_URL = "http://myapi-container:8290/appointmentservices/getAppointment"
     }
 
     stages {
 
-        stage('Checkout SCM') {
+        stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
             }
@@ -22,14 +19,14 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 echo "🛠 Preparing workspace..."
-                sh "mkdir -p ${RESULTS_DIR}"
+                sh 'mkdir -p results'
             }
         }
 
         stage('Build WSO2 Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t ${WSO2_IMAGE} ."
+                sh "docker build -t ${IMAGE_NAME} ."
             }
         }
 
@@ -37,8 +34,8 @@ pipeline {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop ${WSO2_CONTAINER} || true
-                    docker rm ${WSO2_CONTAINER} || true
+                    docker stop ${CONTAINER_NAME} || true
+                    docker rm ${CONTAINER_NAME} || true
                 """
             }
         }
@@ -47,9 +44,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create ${NETWORK_NAME} || true
-                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} \
-                        -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
+                    docker network create ${DOCKER_NET} || true
+                    docker run -d --name ${CONTAINER_NAME} --network ${DOCKER_NET} -p 8290:8290 -p 8253:8253 ${IMAGE_NAME}
                 """
             }
         }
@@ -58,22 +54,20 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 script {
-                    int retries = 20
-                    int count = 0
-                    def status = "0"
-                    while (count < retries && status != "0") {
-                        status = sh(script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- ${API_URL} >/dev/null; echo \$?'", returnStdout: true).trim()
-                        if (status == "0") {
-                            echo "Attempt ${count + 1}: API is ready"
+                    def ready = false
+                    for (int i = 1; i <= 5; i++) {
+                        def status = sh(script: "docker run --rm --network ${DOCKER_NET} busybox sh -c 'wget -qO- http://${CONTAINER_NAME}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
+                        if (status == '0') {
+                            echo "Attempt ${i}: API is ready (HTTP 200)"
+                            ready = true
                             break
                         } else {
-                            echo "Attempt ${count + 1}: API not ready yet"
+                            echo "Attempt ${i}: API not ready yet"
                             sleep 5
                         }
-                        count++
                     }
-                    if (status != "0") {
-                        error "API is not ready after ${retries * 5} seconds."
+                    if (!ready) {
+                        error "API did not become ready in time"
                     }
                 }
             }
@@ -83,8 +77,8 @@ pipeline {
             steps {
                 echo "📄 Checking JMX file..."
                 script {
-                    if (!fileExists("${JMX_FILE}")) {
-                        error "JMX file ${JMX_FILE} not found!"
+                    if (!fileExists('API_TestPlan.jmx')) {
+                        error "JMX file not found in workspace!"
                     }
                 }
             }
@@ -92,16 +86,17 @@ pipeline {
 
         stage('Run Load Test with JMeter') {
             steps {
-                echo "🏃 Running JMeter load test..."
+                echo '🏃 Running JMeter load test...'
                 sh '''
                     # Ensure results folder exists
                     mkdir -p results
 
-                    # Run JMeter inside Docker
-                    docker run --rm --name jmeter-agent --network jenkins-net \
+                    # Run JMeter Docker container
+                    docker run --rm --name jmeter-agent \
+                        --network jenkins-net \
                         -v ${WORKSPACE}:/tests -w /tests \
                         justb4/jmeter:latest \
-                        -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
                 '''
             }
         }
@@ -118,17 +113,12 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop ${WSO2_CONTAINER} || true
-                docker rm ${WSO2_CONTAINER} || true
+                docker stop ${CONTAINER_NAME} || true
+                docker rm ${CONTAINER_NAME} || true
                 docker stop ${JMETER_CONTAINER} || true
                 docker rm ${JMETER_CONTAINER} || true
             """
         }
-
-        success {
-            echo "✅ Pipeline completed successfully!"
-        }
-
         failure {
             echo "❌ Pipeline failed!"
         }
