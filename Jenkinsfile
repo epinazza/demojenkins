@@ -8,7 +8,7 @@ pipeline {
         NETWORK_NAME = "jenkins-net"
         RESULTS_DIR = "${WORKSPACE}/results"
         JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
-        API_URL = "http://myapi-container:8290/appointmentservices/getAppointment"
+        API_URL = "http://host.docker.internal:8290/appointmentservices/getAppointment"
     }
 
     stages {
@@ -62,26 +62,18 @@ pipeline {
                     int count = 0
                     def status = "0"
                     while (count < retries && status != "200") {
-                        // Use container name instead of host.docker.internal
-                        status = sh(
-                            script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- ${API_URL} >/dev/null; echo \$?'", 
-                            returnStdout: true
-                        ).trim()
-
+                        status = sh(script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- http://${WSO2_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
                         if (status == "0") {
                             echo "Attempt ${count + 1}: API is ready (HTTP 200)"
-                            status = "200"
                             break
                         } else {
                             echo "Attempt ${count + 1}: API not ready yet"
+                            sleep 5
+                            count++
                         }
-
-                        sleep 5
-                        count++
                     }
-
-                    if (status != "200") {
-                        error "API is not ready after ${retries * 5} seconds"
+                    if (status != "0") {
+                        error "API is not ready after ${retries * 5} seconds."
                     }
                 }
             }
@@ -102,13 +94,11 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    docker stop ${JMETER_CONTAINER} || true
-                    docker rm ${JMETER_CONTAINER} || true
                     docker run --rm --name ${JMETER_CONTAINER} --network ${NETWORK_NAME} \
                         -v ${WORKSPACE}:/tests \
                         -w /tests \
                         justb4/jmeter:latest \
-                        /bin/bash -c "mkdir -p /tests/results && jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl"
+                        sh -c "mkdir -p /tests/results && jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl"
                 """
             }
         }
