@@ -76,7 +76,7 @@ pipeline {
             }
         }
 
-        stage('Run JMeter Load Test') {
+       stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
 
@@ -84,21 +84,19 @@ pipeline {
                     echo "🧩 Preparing test folders..."
                     mkdir -p ${WORKSPACE}/tests
                     mkdir -p ${WORKSPACE}/results
-
-                    echo "📋 Copying JMX file into /tests..."
                     cp ${WORKSPACE}/API_TestPlan.jmx ${WORKSPACE}/tests/
+                    chmod -R 777 ${WORKSPACE}/tests ${WORKSPACE}/results
 
                     echo "🔍 Checking that JMX file exists before container run..."
                     ls -l ${WORKSPACE}/tests
 
                     echo "🚀 Running JMeter test inside container..."
-                    docker run --rm \
-                        --name jmeter-agent \
+                    docker run --rm --name jmeter-agent \
                         --network jenkins-net \
                         -v ${WORKSPACE}/tests:/tests \
                         -v ${WORKSPACE}/results:/results \
                         justb4/jmeter:latest \
-                        sh -c "ls -l /tests && jmeter -n -t /tests/API_TestPlan.jmx -l /results/report.jtl"
+                        -n -t /tests/API_TestPlan.jmx -l /results/report.jtl
                 """
             }
         }
