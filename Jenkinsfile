@@ -1,10 +1,13 @@
 pipeline {
     agent any
+
     environment {
-        API_PORT = "8290"
-        JMETER_RESULTS_DIR = "results"
+        API_PORT = '8290'
+        JMETER_RESULTS_DIR = 'results'
     }
+
     stages {
+
         stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
@@ -47,51 +50,47 @@ pipeline {
 
         stage('Wait for API Ready') {
             steps {
-                echo "⏳ Waiting for API to be ready..."
-                retry(15) {
-                    sh '''
-                        STATUS_CODE=\\$(curl -s -o /dev/null -w %{http_code} http://host.docker.internal:${API_PORT}/appointmentservices/getAppointment || echo 000)
-                        echo "HTTP status: \\$STATUS_CODE"
-                        if [ "\\$STATUS_CODE" != "200" ]; then
-                            echo "Waiting 2 seconds..."
-                            sleep 2
-                            exit 1
-                        fi
-                    '''
-                }
-            }
-        }
-
-        stage('Check JMX File') {
-            steps {
-                echo "🔍 Checking if JMeter JMX file exists..."
+                echo "⏳ Waiting 40 seconds for API to be ready..."
+                sh 'sleep 40'
                 sh '''
-                    if [ ! -f test2.jmx ]; then
-                        echo "JMX file not found!"
+                    STATUS_CODE=$(curl -s -o /dev/null -w %{http_code} http://host.docker.internal:${API_PORT}/appointmentservices/getAppointment || echo 000)
+                    echo "HTTP status: $STATUS_CODE"
+                    if [ "$STATUS_CODE" != "200" ]; then
+                        echo "API is not ready!"
                         exit 1
                     fi
                 '''
             }
         }
 
+        stage('Check JMX File') {
+            steps {
+                echo "📄 Checking JMX file..."
+                sh 'test -f test2.jmx || { echo "JMX file not found!"; exit 1; }'
+            }
+        }
+
         stage('Load Test with JMeter') {
             steps {
-                echo "🏋️ Running JMeter test..."
+                echo "🏋️ Running Load Test with JMeter..."
                 sh '''
-                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/test2.jmx:/test2.jmx jmeter_image \
-                    jmeter -n -t /test2.jmx -l /results/results.jtl -e -o /results/report
+                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/test2.jmx:/test2.jmx jmeter:5.7 \
+                    -n -t /test2.jmx -l /results/result.jtl
                 '''
             }
         }
 
         stage('Evaluate Performance Threshold') {
             steps {
-                echo "📊 Evaluating performance..."
+                echo "📊 Evaluating performance threshold..."
                 sh '''
-                    AVG_RESP=\\$(grep -E 'summary =' ${JMETER_RESULTS_DIR}/summary.txt | awk '{print $10}' | tail -n 1)
-                    echo "Average response time: \\$AVG_RESP"
+                    AVG_TIME=$(grep -E 'summary =' ${JMETER_RESULTS_DIR}/result.jtl | awk '{print $10}' | tail -n 1)
+                    echo "Average response time: $AVG_TIME ms"
                     THRESHOLD=50
-                    awk -v avg="\\$AVG_RESP" -v th="$THRESHOLD" 'BEGIN { if (avg>th) exit 1 }'
+                    if (( $(echo "$AVG_TIME > $THRESHOLD" | bc -l) )); then
+                        echo "❌ Performance threshold exceeded!"
+                        exit 1
+                    fi
                 '''
             }
         }
@@ -105,10 +104,13 @@ pipeline {
                 docker rm myapi-container || true
             '''
             echo "📦 Archiving JMeter report..."
-            archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/**", allowEmptyArchive: true
+            archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/*", allowEmptyArchive: true
         }
         failure {
             echo "❌ Pipeline failed!"
+        }
+        success {
+            echo "✅ Pipeline completed successfully!"
         }
     }
 }
