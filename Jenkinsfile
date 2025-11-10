@@ -2,23 +2,21 @@ pipeline {
     agent any
 
     environment {
-        WSO2_IMAGE = "myapi-img:v1"
-        WSO2_CONTAINER = "myapi-container"
+        DOCKER_NETWORK = "jenkins-net"
+        API_CONTAINER = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
-        NETWORK_NAME = "jenkins-net"
         RESULTS_DIR = "${WORKSPACE}/results"
-        JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
+        JMX_FILE = "API_TestPlan.jmx"
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Prepare') {
+        stage('Prepare Workspace') {
             steps {
                 echo "🛠 Workspace ready"
                 sh "mkdir -p ${RESULTS_DIR}"
@@ -28,16 +26,16 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image..."
-                sh "docker build -t ${WSO2_IMAGE} ."
+                sh "docker build -t myapi-img:v1 ."
             }
         }
 
-        stage('Stop & Remove Old Container') {
+        stage('Stop & Remove Old API Container') {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop ${WSO2_CONTAINER} || true
-                    docker rm ${WSO2_CONTAINER} || true
+                docker stop ${API_CONTAINER} || true
+                docker rm ${API_CONTAINER} || true
                 """
             }
         }
@@ -46,8 +44,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create ${NETWORK_NAME} || true
-                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
+                docker network create ${DOCKER_NETWORK} || true
+                docker run -d --name ${API_CONTAINER} --network ${DOCKER_NETWORK} -p 8290:8290 -p 8253:8253 myapi-img:v1
                 """
             }
         }
@@ -56,16 +54,11 @@ pipeline {
             steps {
                 echo "⏳ Waiting 40 seconds for API to be ready..."
                 sh "sleep 40"
-
                 script {
-                    def status = sh(
-                        script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment",
-                        returnStdout: true
-                    ).trim()
-
+                    def status = sh(script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment", returnStdout: true).trim()
                     echo "HTTP status: ${status}"
                     if (status != "200") {
-                        error "API is not ready, HTTP status ${status}"
+                        error "API not ready!"
                     }
                 }
             }
@@ -75,8 +68,8 @@ pipeline {
             steps {
                 echo "📄 Checking JMX file..."
                 script {
-                    if (!fileExists("${JMX_FILE}")) {
-                        error "JMX file not found!"
+                    if (!fileExists(JMX_FILE)) {
+                        error "JMX file '${JMX_FILE}' not found!"
                     }
                 }
             }
@@ -86,16 +79,14 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    docker stop ${JMETER_CONTAINER} || true
-                    docker rm ${JMETER_CONTAINER} || true
-                    docker run -d --name ${JMETER_CONTAINER} \\
-                        --network ${NETWORK_NAME} \\
-                        -v ${WORKSPACE}:/tests \\
-                        justb4/jmeter:latest \\
-                        jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                docker stop ${JMETER_CONTAINER} || true
+                docker rm ${JMETER_CONTAINER} || true
+                docker run --rm -d --name ${JMETER_CONTAINER} \\
+                    --network ${DOCKER_NETWORK} \\
+                    -v ${WORKSPACE}:/tests \\
+                    justb4/jmeter:latest \\
+                    jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
                 """
-
-                // Wait for JMeter test to complete
                 sh "docker wait ${JMETER_CONTAINER}"
             }
         }
@@ -103,7 +94,7 @@ pipeline {
         stage('Archive JMeter Report') {
             steps {
                 echo "📦 Archiving JMeter report..."
-                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: true
+                archiveArtifacts artifacts: "results/*.jtl", allowEmptyArchive: false
             }
         }
     }
@@ -112,19 +103,11 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop ${WSO2_CONTAINER} || true
-                docker rm ${WSO2_CONTAINER} || true
-                docker stop ${JMETER_CONTAINER} || true
-                docker rm ${JMETER_CONTAINER} || true
+            docker stop ${API_CONTAINER} || true
+            docker rm ${API_CONTAINER} || true
+            docker stop ${JMETER_CONTAINER} || true
+            docker rm ${JMETER_CONTAINER} || true
             """
-        }
-
-        success {
-            echo "✅ Pipeline completed successfully!"
-        }
-
-        failure {
-            echo "❌ Pipeline failed!"
         }
     }
 }
