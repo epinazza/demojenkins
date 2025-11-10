@@ -8,6 +8,7 @@ pipeline {
         NETWORK_NAME = "jenkins-net"
         RESULTS_DIR = "${WORKSPACE}/results"
         JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
+        API_URL = "http://host.docker.internal:8290/appointmentservices/getAppointment"
     }
 
     stages {
@@ -18,21 +19,21 @@ pipeline {
             }
         }
 
-        stage('Prepare') {
+        stage('Prepare Workspace') {
             steps {
-                echo "🛠 Workspace ready"
+                echo "🛠 Preparing workspace..."
                 sh "mkdir -p ${RESULTS_DIR}"
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build WSO2 Docker Image') {
             steps {
-                echo "🔧 Building Docker image..."
+                echo "🔧 Building WSO2 Docker image..."
                 sh "docker build -t ${WSO2_IMAGE} ."
             }
         }
 
-        stage('Stop & Remove Old Container') {
+        stage('Stop & Remove Old WSO2 Container') {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
@@ -47,25 +48,28 @@ pipeline {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
                     docker network create ${NETWORK_NAME} || true
-                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
+                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} \
+                        -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
                 """
             }
         }
 
         stage('Wait for API Ready') {
             steps {
-                echo "⏳ Waiting 40 seconds for API to be ready..."
-                sh "sleep 40"
-
+                echo "⏳ Waiting for API to be ready..."
                 script {
-                    def status = sh(
-                        script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment",
-                        returnStdout: true
-                    ).trim()
-
-                    echo "HTTP status: ${status}"
+                    int retries = 20
+                    int count = 0
+                    def status = "0"
+                    while (count < retries && status != "200") {
+                        status = sh(script: "curl -s -o /dev/null -w %{http_code} ${API_URL}", returnStdout: true).trim()
+                        echo "Attempt ${count + 1}: HTTP ${status}"
+                        if (status == "200") break
+                        sleep 5
+                        count++
+                    }
                     if (status != "200") {
-                        error "API is not ready, HTTP status ${status}"
+                        error "API is not ready after ${retries * 5} seconds. HTTP status: ${status}"
                     }
                 }
             }
@@ -76,7 +80,7 @@ pipeline {
                 echo "📄 Checking JMX file..."
                 script {
                     if (!fileExists("${JMX_FILE}")) {
-                        error "JMX file not found!"
+                        error "JMX file ${JMX_FILE} not found!"
                     }
                 }
             }
@@ -88,22 +92,19 @@ pipeline {
                 sh """
                     docker stop ${JMETER_CONTAINER} || true
                     docker rm ${JMETER_CONTAINER} || true
-                    docker run -d --name ${JMETER_CONTAINER} \\
-                        --network ${NETWORK_NAME} \\
-                        -v ${WORKSPACE}:/tests \\
-                        justb4/jmeter:latest \\
-                        jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                    docker run --rm --name ${JMETER_CONTAINER} --network ${NETWORK_NAME} \
+                        -v ${WORKSPACE}:/tests \
+                        -w /tests \
+                        justb4/jmeter:latest \
+                        /bin/bash -c "mkdir -p /tests/results && jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl"
                 """
-
-                // Wait for JMeter test to complete
-                sh "docker wait ${JMETER_CONTAINER}"
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
                 echo "📦 Archiving JMeter report..."
-                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: false
             }
         }
     }
