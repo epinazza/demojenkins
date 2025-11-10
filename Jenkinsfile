@@ -2,24 +2,33 @@ pipeline {
     agent any
 
     environment {
+        DOCKER_IMAGE = "myapi-img:v1"
         CONTAINER_NAME = "myapi-container"
-        IMAGE_NAME = "myapi-img:v1"
-        API_PORT = "8290"
+        NETWORK_NAME = "jenkins-net"
+        API_URL = "http://host.docker.internal:8290/appointmentservices/getAppointment"
+        JMETER_TEST_PLAN = "tests/API_TestPlan.jmx"
+        JMETER_RESULTS_DIR = "results"
         THRESHOLD_MS = 500
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
         stage('Prepare') {
             steps {
-                echo "Workspace ready: Jenkins will clone repository automatically"
+                echo "Workspace ready"
+                sh "mkdir -p ${env.JMETER_RESULTS_DIR}"
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image..."
-                sh "docker build -t ${IMAGE_NAME} ."
+                sh "docker build -t ${DOCKER_IMAGE} ."
             }
         }
 
@@ -37,8 +46,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create jenkins-net || true
-                    docker run -d --name ${CONTAINER_NAME} --network jenkins-net -p ${API_PORT}:${API_PORT} -p 8253:8253 ${IMAGE_NAME}
+                    docker network create ${NETWORK_NAME} || true
+                    docker run -d --name ${CONTAINER_NAME} --network ${NETWORK_NAME} -p 8290:8290 -p 8253:8253 ${DOCKER_IMAGE}
                 """
             }
         }
@@ -47,15 +56,15 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 retry(15) {
-                    sh """
-                        STATUS_CODE=\$(curl -s -o /dev/null -w %{http_code} http://host.docker.internal:${API_PORT}/appointmentservices/getAppointment || echo 000)
-                        echo "HTTP status: \$STATUS_CODE"
-                        if [ "\$STATUS_CODE" != "200" ]; then
+                    script {
+                        def status = sh(script: "curl -s -o /dev/null -w %{http_code} ${API_URL}", returnStdout: true).trim()
+                        echo "HTTP status: ${status}"
+                        if (status != "200") {
                             echo "Waiting 2 seconds..."
                             sleep 2
-                            exit 1
-                        fi
-                    """
+                            error("API not ready yet")
+                        }
+                    }
                 }
             }
         }
@@ -63,12 +72,11 @@ pipeline {
         stage('Check JMX File') {
             steps {
                 echo "🔍 Checking if JMeter test plan exists..."
-                sh """
-                    if [ ! -f tests/API_TestPlan.jmx ]; then
-                        echo "❌ JMeter test plan not found!"
-                        exit 1
-                    fi
-                """
+                script {
+                    if (!fileExists(env.JMETER_TEST_PLAN)) {
+                        error("JMeter test plan not found at ${env.JMETER_TEST_PLAN}")
+                    }
+                }
             }
         }
 
@@ -76,15 +84,12 @@ pipeline {
             steps {
                 echo "⚙️ Running JMeter load test in Docker..."
                 sh """
-                    mkdir -p results
                     docker run --rm \
-                        -v \$PWD/tests:/tests \
-                        -v \$PWD/results:/results \
+                        -v ${WORKSPACE}/tests:/tests \
+                        -v ${WORKSPACE}/${JMETER_RESULTS_DIR}:/results \
                         justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx \
-                        -l /results/results.jtl \
-                        -e -o /results/html \
-                    | tee results/summary.txt
+                        -n -t /tests/$(basename ${JMETER_TEST_PLAN}) \
+                        -l /results/results.jtl -e -o /results/html | tee /results/summary.txt
                 """
             }
         }
@@ -93,14 +98,19 @@ pipeline {
             steps {
                 echo "📊 Evaluating performance based on JMeter summary..."
                 script {
-                    def avgResponse = sh(
-                        script: "grep -E 'summary =' results/summary.txt | awk '{print \$10}' | tail -n 1",
+                    def avgResponseTime = sh(
+                        script: "grep -E 'summary =' ${JMETER_RESULTS_DIR}/summary.txt | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
-                    echo "Average response time: ${avgResponse} ms"
 
-                    if (avgResponse.toFloat() > THRESHOLD_MS.toFloat()) {
-                        error "⚠️ Average response time ${avgResponse} ms exceeds threshold ${THRESHOLD_MS} ms!"
+                    if (!avgResponseTime) {
+                        error("Could not find average response time in summary report")
+                    }
+
+                    echo "Average response time: ${avgResponseTime} ms"
+
+                    if (avgResponseTime.toFloat() > env.THRESHOLD_MS.toFloat()) {
+                        error("Average response time ${avgResponseTime} ms exceeds threshold ${env.THRESHOLD_MS} ms")
                     }
                 }
             }
@@ -115,15 +125,13 @@ pipeline {
                 docker rm ${CONTAINER_NAME} || true
             """
             echo "📦 Archiving JMeter report..."
-            archiveArtifacts artifacts: 'results/html/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/**", allowEmptyArchive: true
         }
-
         failure {
             echo "❌ Pipeline failed!"
         }
-
         success {
-            echo "✅ Pipeline finished successfully!"
+            echo "✅ Pipeline succeeded!"
         }
     }
 }
