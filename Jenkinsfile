@@ -2,11 +2,15 @@ pipeline {
     agent any
 
     environment {
-        JMETER_TEST_PLAN = 'tests/API_TestPlan.jmx'
-        JMETER_RESULTS_DIR = 'results'
+        JMETER_TEST_PLAN = "tests/API_TestPlan.jmx"
+        JMETER_RESULTS_DIR = "results"
+        API_CONTAINER_NAME = "myapi-container"
+        API_IMAGE_NAME = "myapi-img:v1"
+        API_PORT = 8290
     }
 
     stages {
+
         stage('Checkout SCM') {
             steps {
                 checkout scm
@@ -22,46 +26,44 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image..."
-                sh 'docker build -t myapi-img:v1 .'
+                sh "docker build -t ${API_IMAGE_NAME} ."
             }
         }
 
         stage('Stop & Remove Old Container') {
             steps {
                 echo "🧹 Cleaning up old container (if any)..."
-                sh '''
-                    docker stop myapi-container || true
-                    docker rm myapi-container || true
-                '''
+                sh """
+                    docker stop ${API_CONTAINER_NAME} || true
+                    docker rm ${API_CONTAINER_NAME} || true
+                """
             }
         }
 
         stage('Run New Container') {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
-                sh '''
+                sh """
                     docker network create jenkins-net || true
-                    docker run -d --name myapi-container --network jenkins-net -p 8290:8290 -p 8253:8253 myapi-img:v1
-                '''
+                    docker run -d --name ${API_CONTAINER_NAME} --network jenkins-net -p ${API_PORT}:${API_PORT} -p 8253:8253 ${API_IMAGE_NAME}
+                """
             }
         }
 
         stage('Wait for API Ready') {
             steps {
                 echo "⏳ Waiting for API to be ready..."
-                retry(15) {
+                retry(10) {
                     script {
                         def status = sh(
-                            script: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8290/appointmentservices/getAppointment',
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${API_PORT}/appointmentservices/getAppointment",
                             returnStdout: true
                         ).trim()
-
+                        echo "HTTP status: ${status}"
                         if (status != "200") {
-                            echo "HTTP status: ${status}, waiting 2 seconds..."
+                            echo "Waiting 2 seconds..."
                             sleep 2
                             error("API not ready yet")
-                        } else {
-                            echo "HTTP status: ${status} ✅ API is ready"
                         }
                     }
                 }
@@ -71,12 +73,11 @@ pipeline {
         stage('Check JMX File') {
             steps {
                 echo "🔍 Checking if JMeter test plan exists..."
-                sh '''
-                    if [ ! -f ${JMETER_TEST_PLAN} ]; then
-                        echo "JMeter test plan not found!"
-                        exit 1
-                    fi
-                '''
+                script {
+                    if (!fileExists(JMETER_TEST_PLAN)) {
+                        error("JMeter test plan not found at ${JMETER_TEST_PLAN}")
+                    }
+                }
             }
         }
 
@@ -86,8 +87,8 @@ pipeline {
                 sh """
                     mkdir -p ${JMETER_RESULTS_DIR}
                     docker run --rm \
-                        -v "${WORKSPACE}/tests:/tests" \
-                        -v "${WORKSPACE}/${JMETER_RESULTS_DIR}:/results" \
+                        -v '${env.WORKSPACE}/tests:/tests' \
+                        -v '${env.WORKSPACE}/${JMETER_RESULTS_DIR}:/results' \
                         justb4/jmeter:latest \
                         -n -t /tests/$(basename ${JMETER_TEST_PLAN}) \
                         -l /results/results.jtl -e -o /results/html | tee /results/summary.txt
@@ -99,15 +100,19 @@ pipeline {
             steps {
                 echo "📊 Evaluating performance based on JMeter summary..."
                 script {
-                    def avgResponseTime = sh(
-                        script: "grep -E 'summary =' ${JMETER_RESULTS_DIR}/summary.txt | awk '{print \\$10}' | tail -n 1",
+                    def summary = sh(
+                        script: "grep -E 'summary =' ${JMETER_RESULTS_DIR}/summary.txt | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
 
-                    echo "Average response time: ${avgResponseTime} ms"
-
-                    if (avgResponseTime != "" && avgResponseTime.toFloat() > 500) {
-                        error("❌ Average response time ${avgResponseTime} ms exceeded threshold of 500 ms")
+                    if (summary == "") {
+                        echo "⚠️ Could not find average response time in summary report."
+                    } else {
+                        def avgResp = summary.toFloat()
+                        echo "Average response time: ${avgResp} ms"
+                        if (avgResp > 50) {
+                            error("❌ Average response time exceeds threshold (50 ms)")
+                        }
                     }
                 }
             }
@@ -117,17 +122,16 @@ pipeline {
     post {
         always {
             echo "🧹 Cleaning up Docker container..."
-            sh '''
-                docker stop myapi-container || true
-                docker rm myapi-container || true
-            '''
-
+            sh """
+                docker stop ${API_CONTAINER_NAME} || true
+                docker rm ${API_CONTAINER_NAME} || true
+            """
             echo "📦 Archiving JMeter report..."
             archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/**", allowEmptyArchive: true
-
-            echo "✅ Pipeline finished!"
         }
-
+        success {
+            echo "✅ Pipeline succeeded!"
+        }
         failure {
             echo "❌ Pipeline failed!"
         }
