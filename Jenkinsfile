@@ -46,9 +46,9 @@ pipeline {
         stage('Wait for API Ready') {
             steps {
                 echo "⏳ Waiting for API to be ready..."
-                retry(15) { // Retry 15 times, 2-second interval
+                retry(15) {
                     sh """
-                        STATUS_CODE=\$(curl -s -o /dev/null -w %{http_code} http://localhost:${API_PORT}/appointmentservices/getAppointment || echo 000)
+                        STATUS_CODE=\$(curl -s -o /dev/null -w %{http_code} http://host.docker.internal:${API_PORT}/appointmentservices/getAppointment || echo 000)
                         echo "HTTP status: \$STATUS_CODE"
                         if [ "\$STATUS_CODE" != "200" ]; then
                             echo "Waiting 2 seconds..."
@@ -60,6 +60,17 @@ pipeline {
             }
         }
 
+        stage('Check JMX File') {
+            steps {
+                echo "🔍 Checking if JMeter test plan exists..."
+                sh """
+                    if [ ! -f tests/API_TestPlan.jmx ]; then
+                        echo "❌ JMeter test plan not found!"
+                        exit 1
+                    fi
+                """
+            }
+        }
 
         stage('Load Test with JMeter') {
             steps {
@@ -88,7 +99,7 @@ pipeline {
                     ).trim()
                     echo "Average response time: ${avgResponse} ms"
 
-                    if (avgResponse != "" && avgResponse.toFloat() > THRESHOLD_MS.toFloat()) {
+                    if (avgResponse.toFloat() > THRESHOLD_MS.toFloat()) {
                         error "⚠️ Average response time ${avgResponse} ms exceeds threshold ${THRESHOLD_MS} ms!"
                     }
                 }
@@ -98,7 +109,7 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning up..."
+            echo "🧹 Cleaning up Docker container..."
             sh """
                 docker stop ${CONTAINER_NAME} || true
                 docker rm ${CONTAINER_NAME} || true
