@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         RESULTS_DIR = "${env.WORKSPACE}/results"
+        TESTS_DIR = "${env.WORKSPACE}/tests"  // New folder for JMX files
     }
 
     stages {
@@ -15,7 +16,19 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 echo "🛠 Workspace ready"
-                sh "mkdir -p ${RESULTS_DIR}"
+                sh """
+                    mkdir -p ${RESULTS_DIR}
+                    mkdir -p ${TESTS_DIR}   # Ensure tests folder exists
+                """
+            }
+        }
+
+        stage('Copy JMX File') {
+            steps {
+                echo "📄 Copying JMX file to tests folder..."
+                sh """
+                    cp ${env.WORKSPACE}/API_TestPlan.jmx ${TESTS_DIR}/
+                """
             }
         }
 
@@ -62,12 +75,26 @@ pipeline {
 
         stage('Check JMX File') {
             steps {
-                echo "📄 Checking JMX file..."
+                echo "📄 Checking JMX file in tests folder..."
                 script {
-                    if (!fileExists('API_TestPlan.jmx')) {
-                        error "JMX file not found in workspace!"
+                    if (!fileExists("${TESTS_DIR}/API_TestPlan.jmx")) {
+                        error "JMX file not found in tests folder!"
                     }
                 }
+            }
+        }
+
+        stage('Debug JMX Inside Container') {
+            steps {
+                echo "🔍 Debug: listing workspace inside JMeter container..."
+                sh """
+                    docker run --rm --name jmeter-agent \\
+                        --network jenkins-net \\
+                        -u root \\
+                        -v ${TESTS_DIR}:/tests \\
+                        -w /tests \\
+                        busybox ls -l
+                """
             }
         }
 
@@ -79,14 +106,13 @@ pipeline {
                     docker run --rm --name jmeter-agent \\
                         --network jenkins-net \\
                         -u root \\
-                        -v ${env.WORKSPACE}:/tests \\
+                        -v ${TESTS_DIR}:/tests \\
                         -w /tests \\
                         justb4/jmeter:latest \\
                         -n -t API_TestPlan.jmx -l results/report.jtl
                 """
             }
         }
-
 
         stage('Archive JMeter Report') {
             steps {
