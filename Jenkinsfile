@@ -54,8 +54,11 @@ pipeline {
                 echo "⏳ Waiting 40 seconds for API to be ready..."
                 sh "sleep 40"
                 script {
-                    sh "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment"
-                    echo "HTTP status: 200"
+                    def status = sh(script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment", returnStdout: true).trim()
+                    echo "HTTP status: ${status}"
+                    if (status != '200') {
+                        error "API is not ready!"
+                    }
                 }
             }
         }
@@ -64,28 +67,16 @@ pipeline {
             steps {
                 echo "📄 Checking JMX file..."
                 script {
-                    fileExists("${WORKSPACE}/API_TestPlan.jmx")
+                    if (!fileExists("${WORKSPACE}/API_TestPlan.jmx")) {
+                        error "JMX file not found!"
+                    }
                 }
             }
         }
 
-       stage('Run Load Test with JMeter') {
+        stage('Debug JMX Inside Container') {
             steps {
-                echo "🏃 Running JMeter load test..."
-
-                // Ensure results folder exists
-                sh "mkdir -p ${WORKSPACE}/results"
-
-                // Stop & remove old JMeter container
-                sh """
-                    docker stop jmeter-agent || true
-                    docker rm jmeter-agent || true
-                """
-
-                // Debug: list workspace contents
-                sh "echo 'Contents of workspace:' && ls -l ${WORKSPACE}"
-
-                // Run JMeter container
+                echo "🔍 Debug: listing workspace inside JMeter container..."
                 sh """
                     docker run --rm --name jmeter-agent \
                         --network jenkins-net \
@@ -93,15 +84,26 @@ pipeline {
                         -v "${WORKSPACE}":/tests \
                         -w /tests \
                         justb4/jmeter:latest \
-                        -n -t API_TestPlan.jmx \
-                        -l results/report.jtl
+                        ls -l
                 """
-
-                // Debug: list results folder after test
-                sh "echo 'Contents of results folder:' && ls -l ${WORKSPACE}/results"
             }
         }
 
+        stage('Run Load Test with JMeter') {
+            steps {
+                echo "🏃 Running JMeter load test..."
+                sh """
+                    docker run --rm --name jmeter-agent \
+                        --network jenkins-net \
+                        -u root \
+                        -w /tests \
+                        -v "${WORKSPACE}":/tests \
+                        justb4/jmeter:latest \
+                        -n -t API_TestPlan.jmx \
+                        -l results/report.jtl
+                """
+            }
+        }
 
         stage('Archive JMeter Report') {
             steps {
@@ -117,17 +119,9 @@ pipeline {
             sh """
                 docker stop myapi-container || true
                 docker rm myapi-container || true
-                docker stop jmeter-agent || true
-                docker rm jmeter-agent || true
             """
         }
-
-        success {
-            echo "✅ Pipeline completed successfully!"
-        }
-
-        failure {
-            echo "❌ Pipeline failed!"
-        }
+        success { echo "✅ Pipeline completed successfully!" }
+        failure { echo "❌ Pipeline failed!" }
     }
 }
