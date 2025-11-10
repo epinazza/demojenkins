@@ -93,12 +93,13 @@ pipeline {
 
                 // Run JMeter with Jenkins workspace mounted directly
                 sh """
-                    docker run --rm --name ${JMETER_CONTAINER} \
+                    docker run --rm --entrypoint sh --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v \$(pwd)/results:/results \
+                    -v ${WORKSPACE}/results:/results \
                     ${JMETER_IMAGE} \
-                    bash -c "mkdir -p /tests && cat > /tests/${JMX_FILE} && jmeter -n -t /tests/${JMX_FILE} -l /results/report.jtl" < ${JMX_FILE}
+                    -c "mkdir -p /tests && cat > /tests/${JMX_FILE} && jmeter -n -t /tests/${JMX_FILE} -l /results/report.jtl" < ${WORKSPACE}/${JMX_FILE}
                 """
+
             }
         }
 
