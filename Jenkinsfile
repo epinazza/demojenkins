@@ -101,7 +101,7 @@ pipeline {
                     docker run --rm --name jmeter-agent --network jenkins-net \
                         -v ${WORKSPACE}:/tests -w /tests \
                         justb4/jmeter:latest \
-                        jmeter -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                        -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
                 '''
             }
         }
