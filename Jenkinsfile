@@ -8,7 +8,7 @@ pipeline {
         NETWORK_NAME = "jenkins-net"
         RESULTS_DIR = "${WORKSPACE}/results"
         JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
-        API_URL = "http://host.docker.internal:8290/appointmentservices/getAppointment"
+        API_URL = "http://myapi-container:8290/appointmentservices/getAppointment"
     }
 
     stages {
@@ -62,14 +62,26 @@ pipeline {
                     int count = 0
                     def status = "0"
                     while (count < retries && status != "200") {
-                        status = sh(script: "curl -s -o /dev/null -w %{http_code} ${API_URL}", returnStdout: true).trim()
-                        echo "Attempt ${count + 1}: HTTP ${status}"
-                        if (status == "200") break
+                        // Use container name instead of host.docker.internal
+                        status = sh(
+                            script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- ${API_URL} >/dev/null; echo \$?'", 
+                            returnStdout: true
+                        ).trim()
+
+                        if (status == "0") {
+                            echo "Attempt ${count + 1}: API is ready (HTTP 200)"
+                            status = "200"
+                            break
+                        } else {
+                            echo "Attempt ${count + 1}: API not ready yet"
+                        }
+
                         sleep 5
                         count++
                     }
+
                     if (status != "200") {
-                        error "API is not ready after ${retries * 5} seconds. HTTP status: ${status}"
+                        error "API is not ready after ${retries * 5} seconds"
                     }
                 }
             }
