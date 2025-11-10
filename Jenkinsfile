@@ -89,14 +89,16 @@ pipeline {
                     docker run --rm --name jmeter-agent \
                         --network ${DOCKER_NETWORK} \
                         -u root \
-                        -v ${WORKSPACE_DIR}:/tests \
-                        -w /tests/tests \
+                        -v ${TESTS_DIR}:/tests \
+                        -v ${RESULTS_DIR}:/results \
+                        -w /tests \
                         justb4/jmeter:latest \
                         -n -t API_TestPlan.jmx \
-                        -l ../results/report.jtl
+                        -l /results/report.jtl
                 """
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
