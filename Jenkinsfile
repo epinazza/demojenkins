@@ -110,7 +110,7 @@ pipeline {
                     -v ${WORKSPACE}/${RESULTS_DIR}:${WORKSPACE}/${RESULTS_DIR} \
                     -w ${WORKSPACE} \
                     ${JMETER_IMAGE} \
-                    jmeter -n -t ${JMX_FILE} -l ${RESULTS_DIR}/report.jtl
+                    -n -t ${JMX_FILE} -l ${RESULTS_DIR}/report.jtl
                 """
             }
         }
