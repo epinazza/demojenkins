@@ -16,8 +16,8 @@ pipeline {
 
     stages {
 
-        stage ('Prepare'){
-            steps{
+        stage('Prepare') {
+            steps {
                 echo 'Workspace ready: Jenkins will clone repository automatically'
             }
         }
@@ -44,70 +44,72 @@ pipeline {
                 echo "🚀 Running new container..."
                 sh """
                     docker run -d \
-                    --name ${CONTAINER_NAME} \
-                    --network ${NETWORK_NAME} \
-                    -p ${API_PORT}:${API_PORT} \
-                    -p ${MANAGEMENT_PORT}:${MANAGEMENT_PORT} \
-                    ${IMAGE_NAME}:v1
+                        --name ${CONTAINER_NAME} \
+                        --network ${NETWORK_NAME} \
+                        -p ${API_PORT}:${API_PORT} \
+                        -p ${MANAGEMENT_PORT}:${MANAGEMENT_PORT} \
+                        ${IMAGE_NAME}:v1
                 """
             }
         }
-
 
         stage('Test API') {
             steps {
-                echo "Wait 30 seconds for WSO2 MI to fully start"
+                echo "⏳ Wait 30 seconds for WSO2 MI to fully start..."
                 sh """
                     sleep 30
-                    curl -I http://localhost:8290 || true
+                    curl -I http://localhost:${API_PORT} || true
                 """
             }
         }
 
-     stage('Load Test with JMeter') {
-        echo "⚙️ Running JMeter load test in Docker..."
-        sh """
-        mkdir -p results
-        docker run --rm \
-            -v $PWD/tests:/tests \
-            -v $PWD/results:/results \
-            justb4/jmeter:5.6.2 \
-            -n -t ${JMETER_TEST} \
-            -l ${JMETER_RESULT_JTL} \
-            -e -o ${JMETER_RESULT_HTML}
-        """
+        stage('Load Test with JMeter') {
+            steps {
+                echo "⚙️ Running JMeter load test in Docker..."
+                sh """
+                    mkdir -p results
+                    docker run --rm \
+                        -v $PWD/tests:/tests \
+                        -v $PWD/results:/results \
+                        justb4/jmeter:5.6.2 \
+                        -n -t /tests/API_TestPlan.jmx \
+                        -l /results/results.jtl \
+                        -e -o /results/html | tee results/summary.txt
+                """
+            }
         }
-
 
         stage('Evaluate Performance Threshold') {
             steps {
                 echo "📊 Evaluating performance based on JMeter summary..."
                 script {
-                    def avgTime = sh(
+                    def avgResponse = sh(
                         script: "grep -E 'summary =' ${JMETER_SUMMARY} | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
-
-                    if (!avgTime) {
+                    
+                    if (!avgResponse) {
                         error("⚠️ Could not find average response time in summary report.")
-                    }
-
-                    echo "Average response time detected: ${avgTime} ms"
-
-                    if (avgTime.toDouble() > RESPONSE_THRESHOLD.toDouble()) {
-                        error("❌ Average response time (${avgTime} ms) exceeds ${RESPONSE_THRESHOLD} ms threshold!")
                     } else {
-                        echo "✅ Performance PASSED: ${avgTime} ms ≤ ${RESPONSE_THRESHOLD} ms"
+                        echo "Average response time: ${avgResponse} ms"
+                        if (avgResponse.toFloat() > RESPONSE_THRESHOLD.toFloat()) {
+                            error("❌ Build failed: Average response time ${avgResponse} ms > ${RESPONSE_THRESHOLD} ms")
+                        } else {
+                            echo "✅ Performance within threshold."
+                        }
                     }
                 }
             }
         }
-
-
     }
 
     post {
         always {
+            echo "🧹 Cleaning up..."
+            sh """
+                docker stop ${CONTAINER_NAME} || true
+                docker rm ${CONTAINER_NAME} || true
+            """
             echo "✅ Pipeline finished!"
         }
     }
