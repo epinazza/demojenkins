@@ -65,16 +65,21 @@ pipeline {
         stage('Wait for API Ready') {
             steps {
                 echo "⏳ Waiting for API to be ready..."
-                retry(5) {
-                    script {
-                        def status = sh(script: "docker run --rm --network ${NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
+                script {
+                    retry(10) {
+                        def status = sh(
+                            script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- http://${API_CONTAINER_NAME}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
+                            returnStdout: true
+                        ).trim()
                         if (status != "0") {
                             echo "Attempt API not ready yet, retrying..."
-                            error("API not ready")
+                            sleep 5
+                            error "API not ready"
+                        } else {
+                            echo "✅ API is ready!"
                         }
                     }
                 }
-                echo "✅ API is ready!"
             }
         }
 
