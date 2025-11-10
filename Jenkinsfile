@@ -12,9 +12,18 @@ pipeline {
     }
 
     stages {
+        stage('Clean Workspace') {
+            steps {
+                echo "🧹 Cleaning workspace..."
+                deleteDir() // deletes everything in workspace
+            }
+        }
         stage('Checkout SCM') {
             steps {
-                git url: 'https://github.com/epinazza/demojenkins.git'
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[url: 'https://github.com/epinazza/demojenkins.git']]
+                ])
             }
         }
 
