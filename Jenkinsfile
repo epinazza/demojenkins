@@ -64,24 +64,10 @@ pipeline {
             steps {
                 echo "📄 Checking JMX file..."
                 script {
-                    if (!fileExists('tests/API_TestPlan.jmx')) {
+                    if (!fileExists('API_TestPlan.jmx')) {
                         error "JMX file not found in workspace!"
                     }
                 }
-            }
-        }
-
-        stage('Debug JMX Inside Container') {
-            steps {
-                echo "🔍 Debug: listing workspace inside JMeter container..."
-                sh """
-                    docker run --rm --name jmeter-agent \\
-                        --network jenkins-net \\
-                        -u root \\
-                        -v ${env.WORKSPACE}:/tests \\
-                        -w /tests \\
-                        busybox ls -l
-                """
             }
         }
 
@@ -96,10 +82,11 @@ pipeline {
                         -v ${env.WORKSPACE}:/tests \\
                         -w /tests \\
                         justb4/jmeter:latest \\
-                        -n -t tests/API_TestPlan.jmx -l results/report.jtl
+                        -n -t API_TestPlan.jmx -l results/report.jtl
                 """
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
