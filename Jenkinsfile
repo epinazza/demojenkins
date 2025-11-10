@@ -95,7 +95,7 @@ pipeline {
                 sh """
                     docker run --rm --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v $(pwd)/results:/results \
+                    -v \$(pwd)/results:/results \
                     ${JMETER_IMAGE} \
                     sh -c "mkdir -p /tests && cat > /tests/${JMX_FILE} && jmeter -n -t /tests/${JMX_FILE} -l /results/report.jtl" < ${JMX_FILE}
                 """
