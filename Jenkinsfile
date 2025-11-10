@@ -56,23 +56,28 @@ pipeline {
 
         stage('Test API') {
             steps {
-                echo "Wait 10 seconds for WSO2 MI to fully start"
+                echo "Wait 30 seconds for WSO2 MI to fully start"
                 sh """
-                    sleep 10
+                    sleep 30
                     curl -I http://localhost:8290 || true
                 """
             }
         }
 
      stage('Load Test with JMeter') {
-            steps {
-                echo "⚙️ Running JMeter load test..."
-                sh """
-                    mkdir -p results
-                    jmeter -n -t ${JMETER_TEST} -l ${JMETER_RESULT_JTL} -e -o ${JMETER_RESULT_HTML} | tee ${JMETER_SUMMARY}
-                """
-            }
+        echo "⚙️ Running JMeter load test in Docker..."
+        sh """
+        mkdir -p results
+        docker run --rm \
+            -v $PWD/tests:/tests \
+            -v $PWD/results:/results \
+            justb4/jmeter:5.6.2 \
+            -n -t ${JMETER_TEST} \
+            -l ${JMETER_RESULT_JTL} \
+            -e -o ${JMETER_RESULT_HTML}
+        """
         }
+
 
         stage('Evaluate Performance Threshold') {
             steps {
