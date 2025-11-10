@@ -4,7 +4,7 @@ pipeline {
     environment {
         TESTS_DIR = "${WORKSPACE}/tests"
         RESULTS_DIR = "${WORKSPACE}/results"
-        JMETER_IMAGE = "jmeter/jmeter:latest"
+        JMETER_IMAGE = "justb4/jmeter:latest"
         WSO2_IMAGE = "myapi-img:v1"
         CONTAINER_NAME = "myapi-container"
         NETWORK_NAME = "jenkins-net"
