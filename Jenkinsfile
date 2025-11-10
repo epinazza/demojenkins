@@ -7,6 +7,11 @@ pipeline {
         NETWORK_NAME = "jenkins-net"
         API_PORT = "8290"
         MANAGEMENT_PORT = "8253"
+        JMETER_TEST = "tests/API_TestPlan.jmx"
+        JMETER_RESULT_JTL = "results/results.jtl"
+        JMETER_RESULT_HTML = "results/html"
+        JMETER_SUMMARY = "results/summary.txt"
+        RESPONSE_THRESHOLD = "500" // milliseconds
     }
 
     stages {
@@ -54,10 +59,46 @@ pipeline {
                 echo "Wait 10 seconds for WSO2 MI to fully start"
                 sh """
                     sleep 10
-                    curl -I http://${CONTAINER_NAME}:8290 || true
+                    curl -I http://localhost:8290 || true
                 """
             }
         }
+
+     stage('Load Test with JMeter') {
+            steps {
+                echo "⚙️ Running JMeter load test..."
+                sh """
+                    mkdir -p results
+                    jmeter -n -t ${JMETER_TEST} -l ${JMETER_RESULT_JTL} -e -o ${JMETER_RESULT_HTML} | tee ${JMETER_SUMMARY}
+                """
+            }
+        }
+
+        stage('Evaluate Performance Threshold') {
+            steps {
+                echo "📊 Evaluating performance based on JMeter summary..."
+                script {
+                    def avgTime = sh(
+                        script: "grep -E 'summary =' ${JMETER_SUMMARY} | awk '{print \$10}' | tail -n 1",
+                        returnStdout: true
+                    ).trim()
+
+                    if (!avgTime) {
+                        error("⚠️ Could not find average response time in summary report.")
+                    }
+
+                    echo "Average response time detected: ${avgTime} ms"
+
+                    if (avgTime.toDouble() > RESPONSE_THRESHOLD.toDouble()) {
+                        error("❌ Average response time (${avgTime} ms) exceeds ${RESPONSE_THRESHOLD} ms threshold!")
+                    } else {
+                        echo "✅ Performance PASSED: ${avgTime} ms ≤ ${RESPONSE_THRESHOLD} ms"
+                    }
+                }
+            }
+        }
+
+
     }
 
     post {
