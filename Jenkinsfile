@@ -101,23 +101,19 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
 
-                // Verify JMX file exists on Jenkins host
                 sh "ls -l ${WORKSPACE}/${JMX_FILE}"
 
-                // Run JMeter inside Docker with mounted workspace
                 sh """
                     docker run --rm --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v ${WORKSPACE}:/tests \
-                    -v ${WORKSPACE}/${RESULTS_DIR}:/results \
-                    -u 0 \
+                    -v ${WORKSPACE}:${WORKSPACE} \
+                    -v ${WORKSPACE}/${RESULTS_DIR}:${WORKSPACE}/${RESULTS_DIR} \
+                    -w ${WORKSPACE} \
                     ${JMETER_IMAGE} \
-                    -n -t /tests/${JMX_FILE} -l /results/report.jtl
+                    jmeter -n -t ${JMX_FILE} -l ${RESULTS_DIR}/report.jtl
                 """
             }
         }
-
-
 
         stage('Archive JMeter Report') {
             steps {
