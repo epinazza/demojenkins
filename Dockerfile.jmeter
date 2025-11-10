@@ -1,9 +1,14 @@
-# Use the base JMeter image
-FROM justb4/jmeter:latest
+# Dockerfile.jmeter
+# Use BlazeMeter JMeter 5.5 base image
+FROM blazemeter/jmeter:5.5
 
-# Install BlazeMeter Concurrency Thread Group plugin
-# jpgc-casutg = Concurrency Thread Group
-RUN /opt/apache-jmeter-5.5/bin/PluginsManagerCMD.sh install jpgc-casutg
+# Install BlazeMeter Concurrency Thread Group plugin (jpgc-casutg)
+RUN /opt/jmeter/bin/PluginsManagerCMD.sh install jpgc-casutg
 
-# Verify plugin installation (optional)
-RUN /opt/apache-jmeter-5.5/bin/PluginsManagerCMD.sh list
+# Optional: verify plugin installation
+RUN /opt/jmeter/bin/PluginsManagerCMD.sh list
+
+# Set working directory for tests
+WORKDIR /tests
+
+# Default entrypoint is JMeter, you can override in Jenkins pipeline
