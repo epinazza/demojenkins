@@ -88,11 +88,11 @@ pipeline {
             steps {
                 echo "🛠️ Checking mounted files inside Docker..."
                 sh """
-                    docker run --rm --name debug-mount \
+                    docker run --rm --entrypoint sh \
                     -v ${WORKSPACE}:/tests \
                     -v ${WORKSPACE}/${RESULTS_DIR}:/results \
                     ${JMETER_IMAGE} \
-                    ls -l /tests
+                    -c "ls -l /tests"
                 """
             }
         }
@@ -115,6 +115,7 @@ pipeline {
                 """
             }
         }
+
 
 
         stage('Archive JMeter Report') {
