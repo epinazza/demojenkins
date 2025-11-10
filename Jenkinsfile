@@ -86,6 +86,8 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
+                    docker stop ${JMETER_CONTAINER} || true
+                    docker rm ${JMETER_CONTAINER} || true
                     docker run -d --name ${JMETER_CONTAINER} \\
                         --network ${NETWORK_NAME} \\
                         -v ${WORKSPACE}:/tests \\
