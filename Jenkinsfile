@@ -2,16 +2,15 @@ pipeline {
     agent any
 
     environment {
+        WORKSPACE_DIR = "${env.WORKSPACE}"
+        TESTS_DIR = "${WORKSPACE_DIR}/tests"
+        RESULTS_DIR = "${WORKSPACE_DIR}/results"
         DOCKER_NETWORK = "jenkins-net"
-        JMX_FILE = "API_TestPlan.jmx"
-        RESULTS_DIR = "${WORKSPACE}/results"
-        TESTS_DIR = "${WORKSPACE}/tests"
         DOCKER_IMAGE = "myapi-img:v1"
         CONTAINER_NAME = "myapi-container"
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 echo "🔄 Checking out repository..."
@@ -23,8 +22,8 @@ pipeline {
             steps {
                 echo "🛠 Preparing workspace..."
                 sh """
-                    mkdir -p ${RESULTS_DIR} ${TESTS_DIR}
-                    cp ${WORKSPACE}/${JMX_FILE} ${TESTS_DIR}/
+                    mkdir -p ${TESTS_DIR} ${RESULTS_DIR}
+                    cp ${WORKSPACE_DIR}/API_TestPlan.jmx ${TESTS_DIR}/
                 """
             }
         }
@@ -32,11 +31,13 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t ${DOCKER_IMAGE} ."
+                sh """
+                    docker build -t ${DOCKER_IMAGE} .
+                """
             }
         }
 
-        stage('Stop & Remove Old API Container') {
+        stage('Stop & Remove Old Container') {
             steps {
                 echo "🧹 Cleaning up old WSO2 container..."
                 sh """
@@ -64,14 +65,11 @@ pipeline {
                 echo "⏳ Waiting 40 seconds for API..."
                 sh "sleep 40"
                 script {
-                    def status = sh(
+                    def httpStatus = sh(
                         script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment",
                         returnStdout: true
                     ).trim()
-                    echo "HTTP status: ${status}"
-                    if (status != "200") {
-                        error "API not ready!"
-                    }
+                    echo "HTTP status: ${httpStatus}"
                 }
             }
         }
@@ -91,19 +89,19 @@ pipeline {
                     docker run --rm --name jmeter-agent \
                         --network ${DOCKER_NETWORK} \
                         -u root \
-                        -v ${TESTS_DIR}:/tests \
-                        -v ${RESULTS_DIR}:/tests/results \
-                        -w /tests \
+                        -v ${WORKSPACE_DIR}:/tests \
+                        -w /tests/tests \
                         justb4/jmeter:latest \
-                        -n -t ${JMX_FILE} -l results/report.jtl
+                        -n -t API_TestPlan.jmx \
+                        -l ../results/report.jtl
                 """
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
-                echo "📂 Archiving JMeter report..."
-                archiveArtifacts artifacts: 'results/report.jtl', allowEmptyArchive: true
+                echo "📂 Archiving JMeter results..."
+                archiveArtifacts artifacts: "results/**", allowEmptyArchive: true
             }
         }
 
@@ -112,12 +110,12 @@ pipeline {
                 echo "📊 Evaluating performance..."
                 script {
                     def avgResp = sh(
-                        script: "grep 'summary =' ${RESULTS_DIR}/report.jtl | awk '{print \$10}' | tail -n1",
+                        script: "grep -E 'summary =' ${RESULTS_DIR}/report.jtl | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
                     echo "Average response time: ${avgResp} ms"
                     if (avgResp.toFloat() > 50) {
-                        error "Average response time exceeded threshold! (${avgResp} ms > 50 ms)"
+                        error "❌ Average response time exceeded 50ms!"
                     }
                 }
             }
@@ -132,11 +130,11 @@ pipeline {
                 docker rm ${CONTAINER_NAME} || true
             """
         }
-        success {
-            echo "✅ Pipeline succeeded!"
-        }
         failure {
             echo "❌ Pipeline failed!"
+        }
+        success {
+            echo "✅ Pipeline completed successfully!"
         }
     }
 }
