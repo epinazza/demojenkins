@@ -29,9 +29,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image..."
-                sh """
-                    docker build -t ${IMAGE_NAME} .
-                """
+                sh "docker build -t ${IMAGE_NAME} ."
             }
         }
 
@@ -48,10 +46,8 @@ pipeline {
         stage('Run New Container') {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
-                sh """
-                    docker network create jenkins-net || true
-                    docker run -d --name ${CONTAINER_NAME} --network jenkins-net -p 8290:8290 -p 8253:8253 ${IMAGE_NAME}
-                """
+                sh 'docker network create jenkins-net || true'
+                sh "docker run -d --name ${CONTAINER_NAME} --network jenkins-net -p 8290:8290 -p 8253:8253 ${IMAGE_NAME}"
             }
         }
 
@@ -59,10 +55,9 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 script {
-                    def status = ""
                     retry(env.MAX_RETRIES.toInteger()) {
-                        status = sh(
-                            script: """curl -s -o /dev/null -w %{http_code} ${API_URL}""",
+                        def status = sh(
+                            script: "curl -s -o /dev/null -w %{http_code} ${API_URL}",
                             returnStdout: true
                         ).trim()
                         echo "HTTP status: ${status}"
@@ -79,26 +74,19 @@ pipeline {
         stage('Check JMX File') {
             steps {
                 echo "🔍 Checking if JMeter test plan exists..."
-                sh """
-                    if [ ! -f ${JMETER_TEST_PLAN} ]; then
-                        echo "❌ JMeter test plan not found!"
-                        exit 1
-                    fi
-                """
+                sh "test -f ${JMETER_TEST_PLAN} || { echo '❌ JMeter test plan not found!'; exit 1; }"
             }
         }
 
         stage('Load Test with JMeter') {
             steps {
                 echo "⚙️ Running JMeter load test in Docker..."
-                sh """
-                    docker run --rm \
-                        -v \${env.WORKSPACE}/tests:/tests \
-                        -v \${env.WORKSPACE}/${JMETER_RESULTS_DIR}:/results \
-                        justb4/jmeter:latest \
-                        -n -t /tests/$(basename ${JMETER_TEST_PLAN}) \
-                        -l /results/results.jtl -e -o /results/html | tee /results/summary.txt
-                """
+                sh 'docker run --rm ' +
+                   '-v ' + env.WORKSPACE + '/tests:/tests ' +
+                   '-v ' + env.WORKSPACE + '/' + env.JMETER_RESULTS_DIR + ':/results ' +
+                   'justb4/jmeter:latest ' +
+                   '-n -t /tests/' + env.JMETER_TEST_PLAN.tokenize("/").last() + ' ' +
+                   '-l /results/results.jtl -e -o /results/html | tee /results/summary.txt'
             }
         }
 
@@ -111,7 +99,6 @@ pipeline {
                         returnStdout: true
                     ).trim()
                     echo "Average response time: ${avgResponseTime} ms"
-
                     if (avgResponseTime != "" && avgResponseTime.toFloat() > 50) {
                         error("❌ Average response time exceeded 50 ms")
                     }
@@ -127,17 +114,10 @@ pipeline {
                 docker stop ${CONTAINER_NAME} || true
                 docker rm ${CONTAINER_NAME} || true
             """
-
             echo "📦 Archiving JMeter report..."
             archiveArtifacts artifacts: "${JMETER_RESULTS_DIR}/**", allowEmptyArchive: true
         }
-
-        success {
-            echo "✅ Pipeline completed successfully!"
-        }
-
-        failure {
-            echo "❌ Pipeline failed!"
-        }
+        success { echo "✅ Pipeline completed successfully!" }
+        failure { echo "❌ Pipeline failed!" }
     }
 }
