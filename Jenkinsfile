@@ -15,9 +15,10 @@ pipeline {
         stage('Clean Workspace') {
             steps {
                 echo "🧹 Cleaning workspace..."
-                deleteDir() // deletes everything in workspace
+                deleteDir()
             }
         }
+
         stage('Checkout SCM') {
             steps {
                 checkout([$class: 'GitSCM',
@@ -86,13 +87,17 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
+
+                // Verify JMX file exists before mounting
+                sh "ls -l ${WORKSPACE}/${JMX_FILE}"
+
+                // Run JMeter with Jenkins workspace mounted directly
                 sh """
                     docker run --rm --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v \$(pwd)/${JMX_FILE}:/tests/${JMX_FILE}:ro \
-                    -v \$(pwd)/${RESULTS_DIR}:/tests/results:rw \
+                    -v ${WORKSPACE}:/tests \
                     -w /tests ${JMETER_IMAGE} \
-                    -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                    -n -t /tests/${JMX_FILE} -l /tests/${RESULTS_DIR}/report.jtl
                 """
             }
         }
