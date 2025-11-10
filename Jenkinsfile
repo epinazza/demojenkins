@@ -82,16 +82,23 @@ pipeline {
                     docker rm jmeter-agent || true
                 """
 
-                // Run JMeter container
+                // Debug: list workspace contents
+                sh "echo 'Contents of workspace:' && ls -l ${WORKSPACE}"
+
+                // Run JMeter container with workspace mounted
                 sh """
                     docker run --rm --name jmeter-agent \
                         --network jenkins-net \
-                        -v ${WORKSPACE}:/tests \
+                        -v "${WORKSPACE}":/tests \
                         justb4/jmeter:latest \
                         -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
                 """
+
+                // Debug: list results folder after test
+                sh "echo 'Contents of results folder:' && ls -l ${WORKSPACE}/results"
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
