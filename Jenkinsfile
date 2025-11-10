@@ -1,16 +1,14 @@
 pipeline {
     agent any
-
     environment {
-        DOCKER_NET = "jenkins-net"
-        IMAGE_NAME = "myapi-img:v1"
-        CONTAINER_NAME = "myapi-container"
-        JMETER_CONTAINER = "jmeter-agent"
+        RESULTS_DIR = "${WORKSPACE}/results"
+        DOCKER_NETWORK = "jenkins-net"
+        API_CONTAINER = "myapi-container"
+        API_IMAGE = "myapi-img:v1"
+        JMX_FILE = "API_TestPlan.jmx"
     }
-
     stages {
-
-        stage('Declarative: Checkout SCM') {
+        stage('Checkout SCM') {
             steps {
                 checkout scm
             }
@@ -19,14 +17,14 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 echo "🛠 Preparing workspace..."
-                sh 'mkdir -p results'
+                sh "mkdir -p ${RESULTS_DIR}"
             }
         }
 
         stage('Build WSO2 Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t ${IMAGE_NAME} ."
+                sh "docker build -t ${API_IMAGE} ."
             }
         }
 
@@ -34,8 +32,8 @@ pipeline {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop ${CONTAINER_NAME} || true
-                    docker rm ${CONTAINER_NAME} || true
+                    docker stop ${API_CONTAINER} || true
+                    docker rm ${API_CONTAINER} || true
                 """
             }
         }
@@ -44,8 +42,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create ${DOCKER_NET} || true
-                    docker run -d --name ${CONTAINER_NAME} --network ${DOCKER_NET} -p 8290:8290 -p 8253:8253 ${IMAGE_NAME}
+                    docker network create ${DOCKER_NETWORK} || true
+                    docker run -d --name ${API_CONTAINER} --network ${DOCKER_NETWORK} -p 8290:8290 -p 8253:8253 ${API_IMAGE}
                 """
             }
         }
@@ -54,20 +52,24 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 script {
-                    def ready = false
-                    for (int i = 1; i <= 5; i++) {
-                        def status = sh(script: "docker run --rm --network ${DOCKER_NET} busybox sh -c 'wget -qO- http://${CONTAINER_NAME}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
-                        if (status == '0') {
-                            echo "Attempt ${i}: API is ready (HTTP 200)"
-                            ready = true
-                            break
+                    int attempts = 0
+                    int maxAttempts = 10
+                    boolean apiReady = false
+
+                    while(attempts < maxAttempts && !apiReady) {
+                        def status = sh(script: "docker run --rm --network ${DOCKER_NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
+                        if(status == "0") {
+                            echo "API is ready!"
+                            apiReady = true
                         } else {
-                            echo "Attempt ${i}: API not ready yet"
+                            attempts++
+                            echo "Attempt ${attempts}: API not ready yet"
                             sleep 5
                         }
                     }
-                    if (!ready) {
-                        error "API did not become ready in time"
+
+                    if(!apiReady) {
+                        error "API did not become ready in time!"
                     }
                 }
             }
@@ -76,9 +78,10 @@ pipeline {
         stage('Check JMX File') {
             steps {
                 echo "📄 Checking JMX file..."
+                sh "ls -l ${WORKSPACE}"
                 script {
-                    if (!fileExists('API_TestPlan.jmx')) {
-                        error "JMX file not found in workspace!"
+                    if (!fileExists("${JMX_FILE}")) {
+                        error "JMX file '${JMX_FILE}' not found in workspace!"
                     }
                 }
             }
@@ -86,38 +89,36 @@ pipeline {
 
         stage('Run Load Test with JMeter') {
             steps {
-                echo '🏃 Running JMeter load test...'
-                sh '''
-                    # Ensure results folder exists
-                    mkdir -p results
-
-                    # Run JMeter Docker container
-                    docker run --rm --name jmeter-agent \
-                        --network jenkins-net \
+                echo "🏃 Running JMeter load test..."
+                sh """
+                    mkdir -p ${RESULTS_DIR}
+                    docker run --rm --name jmeter-agent --network ${DOCKER_NETWORK} \
                         -v ${WORKSPACE}:/tests -w /tests \
                         justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
-                '''
+                        -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                """
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
                 echo "📦 Archiving JMeter report..."
-                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: false
+                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: true
             }
         }
     }
-
     post {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop ${CONTAINER_NAME} || true
-                docker rm ${CONTAINER_NAME} || true
-                docker stop ${JMETER_CONTAINER} || true
-                docker rm ${JMETER_CONTAINER} || true
+                docker stop ${API_CONTAINER} || true
+                docker rm ${API_CONTAINER} || true
+                docker stop jmeter-agent || true
+                docker rm jmeter-agent || true
             """
+        }
+        success {
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
             echo "❌ Pipeline failed!"
