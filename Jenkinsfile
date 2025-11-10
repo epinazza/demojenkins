@@ -2,97 +2,108 @@ pipeline {
     agent any
 
     environment {
-        API_IMAGE = "myapi-img:v1"
-        JMETER_IMAGE = "my-jmeter-img:latest"
-        API_CONTAINER = "myapi-container"
+        WSO2_IMAGE = "myapi-img:v1"
+        WSO2_CONTAINER = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
-        NETWORK = "jenkins-net"
-        JMX_FILE = "API_TestPlan.jmx"
-        RESULTS_DIR = "results"
+        NETWORK_NAME = "jenkins-net"
+        RESULTS_DIR = "${WORKSPACE}/results"
+        JMX_FILE = "API_TestPlan.jmx" // Make sure this exists in your repo
     }
 
     stages {
+
         stage('Checkout SCM') {
             steps {
-                git url: 'https://github.com/epinazza/demojenkins.git'
+                checkout scm
             }
         }
 
-        stage('Prepare Workspace') {
+        stage('Prepare') {
             steps {
+                echo "🛠 Workspace ready"
                 sh "mkdir -p ${RESULTS_DIR}"
             }
         }
 
-        stage('Build API Docker Image') {
+        stage('Build Docker Image') {
             steps {
-                echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t ${API_IMAGE} -f Dockerfile ."
+                echo "🔧 Building Docker image..."
+                sh "docker build -t ${WSO2_IMAGE} ."
             }
         }
 
-        stage('Build JMeter Docker Image') {
+        stage('Stop & Remove Old Container') {
             steps {
-                echo "⚡ Building custom JMeter image with BlazeMeter plugin..."
-                sh "docker build -t ${JMETER_IMAGE} -f Dockerfile.jmeter ."
-            }
-        }
-
-        stage('Stop & Remove Old Containers') {
-            steps {
-                echo "🧹 Cleaning up old containers..."
+                echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop ${API_CONTAINER} || true
-                    docker rm ${API_CONTAINER} || true
-                    docker stop ${JMETER_CONTAINER} || true
-                    docker rm ${JMETER_CONTAINER} || true
+                    docker stop ${WSO2_CONTAINER} || true
+                    docker rm ${WSO2_CONTAINER} || true
                 """
             }
         }
 
-        stage('Run API Container') {
+        stage('Run WSO2 Container') {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create ${NETWORK} || true
-                    docker run -d --name ${API_CONTAINER} --network ${NETWORK} -p 8290:8290 -p 8253:8253 ${API_IMAGE}
+                    docker network create ${NETWORK_NAME} || true
+                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
                 """
             }
         }
 
         stage('Wait for API Ready') {
             steps {
-                echo "⏳ Waiting for API to be ready..."
-                retry(5) {
-                    script {
-                        def status = sh(script: "docker run --rm --network ${NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'", returnStdout: true).trim()
-                        if (status != "0") {
-                            echo "Attempt API not ready yet, retrying..."
-                            error("API not ready")
-                        }
+                echo "⏳ Waiting 40 seconds for API to be ready..."
+                sh "sleep 40"
+
+                script {
+                    def status = sh(
+                        script: "curl -s -o /dev/null -w %{http_code} http://host.docker.internal:8290/appointmentservices/getAppointment",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "HTTP status: ${status}"
+                    if (status != "200") {
+                        error "API is not ready, HTTP status ${status}"
                     }
                 }
-                echo "✅ API is ready!"
             }
         }
 
-        stage('Run JMeter Load Test') {
+        stage('Check JMX File') {
+            steps {
+                echo "📄 Checking JMX file..."
+                script {
+                    if (!fileExists("${JMX_FILE}")) {
+                        error "JMX file not found!"
+                    }
+                }
+            }
+        }
+
+        stage('Run Load Test with JMeter') {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    docker run --rm --name ${JMETER_CONTAINER} \
-                    --network ${NETWORK} \
-                    -v \$(pwd)/${JMX_FILE}:/tests/${JMX_FILE}:ro \
-                    -v \$(pwd)/${RESULTS_DIR}:/tests/results:rw \
-                    -w /tests ${JMETER_IMAGE} \
-                    -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
+                    docker stop ${JMETER_CONTAINER} || true
+                    docker rm ${JMETER_CONTAINER} || true
+                    docker run -d --name ${JMETER_CONTAINER} \\
+                        --network ${NETWORK_NAME} \\
+                        -v ${WORKSPACE}:/tests \\
+                        justb4/jmeter:latest \\
+                        -n -t /tests/${JMX_FILE} -l /tests/results/report.jtl
                 """
+
+                // Wait for JMeter test to complete
+                sh "docker wait ${JMETER_CONTAINER}"
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl", allowEmptyArchive: true
+                echo "📦 Archiving JMeter report..."
+                archiveArtifacts artifacts: 'results/*.jtl', allowEmptyArchive: true
             }
         }
     }
@@ -101,12 +112,17 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop ${API_CONTAINER} || true
-                docker rm ${API_CONTAINER} || true
+                docker stop ${WSO2_CONTAINER} || true
+                docker rm ${WSO2_CONTAINER} || true
                 docker stop ${JMETER_CONTAINER} || true
                 docker rm ${JMETER_CONTAINER} || true
             """
         }
+
+        success {
+            echo "✅ Pipeline completed successfully!"
+        }
+
         failure {
             echo "❌ Pipeline failed!"
         }
