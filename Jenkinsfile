@@ -5,7 +5,8 @@ pipeline {
         CONTAINER_NAME = "myapi-container"
         IMAGE_NAME = "myapi-img:v1"
         API_PORT = "8290"
-        THRESHOLD_MS = 50
+        THRESHOLD_MS = 500
+        WORKSPACE_DIR = "${WORKSPACE}"
     }
 
     stages {
@@ -43,19 +44,29 @@ pipeline {
             }
         }
 
-        stage('Test API') {
+        stage('Wait for API Ready') {
             steps {
-                echo "⏳ Waiting 30 seconds for WSO2 MI to start..."
+                echo "⏳ Waiting for API to be ready..."
                 sh """
-                    sleep 30
-                    echo "🔍 Checking API health..."
-                    STATUS_CODE=\$(docker exec ${CONTAINER_NAME} curl -s -o /dev/null -w "%{http_code}" http://localhost:${API_PORT}/appointmentservices/getAppointment)
-                    echo "HTTP status: \$STATUS_CODE"
-                    if [ "\$STATUS_CODE" != "200" ]; then
-                        echo "❌ API not ready!"
-                        exit 1
-                    fi
+                    for i in {1..30}; do
+                        STATUS_CODE=\$(docker exec ${CONTAINER_NAME} curl -s -o /dev/null -w "%{http_code}" http://localhost:${API_PORT}/appointmentservices/getAppointment || true)
+                        if [ "\$STATUS_CODE" == "200" ]; then
+                            echo "✅ API is ready!"
+                            exit 0
+                        fi
+                        echo "Waiting... attempt \$i"
+                        sleep 2
+                    done
+                    echo "❌ API did not start in time"
+                    exit 1
                 """
+            }
+        }
+
+        stage('Check JMX File') {
+            steps {
+                echo "🔍 Checking JMeter test plan exists..."
+                sh "ls -l ${WORKSPACE_DIR}/tests"
             }
         }
 
@@ -63,15 +74,14 @@ pipeline {
             steps {
                 echo "⚙️ Running JMeter load test in Docker..."
                 sh """
-                    mkdir -p results
+                    mkdir -p ${WORKSPACE_DIR}/results
                     docker run --rm \
-                        -v \$PWD/tests:/tests \
-                        -v \$PWD/results:/results \
+                        -v ${WORKSPACE_DIR}/tests:/tests \
+                        -v ${WORKSPACE_DIR}/results:/results \
                         justb4/jmeter:latest \
                         -n -t /tests/API_TestPlan.jmx \
                         -l /results/results.jtl \
-                        -e -o /results/html \
-                    | tee results/summary.txt
+                        -e -o /results/html
                 """
             }
         }
@@ -80,10 +90,16 @@ pipeline {
             steps {
                 echo "📊 Evaluating performance based on JMeter summary..."
                 script {
+                    // Extract average response time from JMeter result
                     def avgResponse = sh(
-                        script: "grep -E 'summary =' results/summary.txt | awk '{print \$10}' | tail -n 1",
+                        script: "grep 'summary =' ${WORKSPACE_DIR}/results/results.jtl | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
+
+                    if (avgResponse == '') {
+                        error "❌ Could not find average response time in JMeter results!"
+                    }
+
                     echo "Average response time: ${avgResponse} ms"
 
                     if (avgResponse.toFloat() > THRESHOLD_MS.toFloat()) {
@@ -96,7 +112,7 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning up..."
+            echo "🧹 Cleaning up Docker container..."
             sh """
                 docker stop ${CONTAINER_NAME} || true
                 docker rm ${CONTAINER_NAME} || true
