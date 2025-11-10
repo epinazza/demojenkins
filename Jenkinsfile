@@ -91,18 +91,16 @@ pipeline {
                 // Verify JMX file exists before mounting
                 sh "ls -l ${WORKSPACE}/${JMX_FILE}"
 
-                // Run JMeter with the JMX file directly mounted
+                // Run JMeter with Jenkins workspace mounted directly
                 sh """
                     docker run --rm --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v ${WORKSPACE}/${JMX_FILE}:/tests/${JMX_FILE} \
-                    -v ${WORKSPACE}/results:/results \
+                    -v \$(pwd)/results:/results \
                     ${JMETER_IMAGE} \
-                    -n -t /tests/${JMX_FILE} -l /results/report.jtl
+                    bash -c "mkdir -p /tests && cat > /tests/${JMX_FILE} && jmeter -n -t /tests/${JMX_FILE} -l /results/report.jtl" < ${JMX_FILE}
                 """
             }
         }
-
 
         stage('Archive JMeter Report') {
             steps {
