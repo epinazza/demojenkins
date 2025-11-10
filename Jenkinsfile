@@ -69,14 +69,14 @@ pipeline {
             }
         }
 
-        stage('Run Load Test with JMeter') {
+       stage('Run Load Test with JMeter') {
             steps {
                 echo "🏃 Running JMeter load test..."
 
-                // Ensure results folder exists on host
+                // Ensure results folder exists
                 sh "mkdir -p ${WORKSPACE}/results"
 
-                // Stop & remove old JMeter container if it exists
+                // Stop & remove old JMeter container
                 sh """
                     docker stop jmeter-agent || true
                     docker rm jmeter-agent || true
@@ -85,21 +85,23 @@ pipeline {
                 // Debug: list workspace contents
                 sh "echo 'Contents of workspace:' && ls -l ${WORKSPACE}"
 
-                // Run JMeter container with correct permissions
+                // Run JMeter container
                 sh """
                     docker run --rm --name jmeter-agent \
                         --network jenkins-net \
                         -u root \
                         -v "${WORKSPACE}":/tests \
+                        -w /tests \
                         justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx \
-                        -l /tests/results/report.jtl
+                        -n -t API_TestPlan.jmx \
+                        -l results/report.jtl
                 """
 
                 // Debug: list results folder after test
                 sh "echo 'Contents of results folder:' && ls -l ${WORKSPACE}/results"
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
