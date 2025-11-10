@@ -1,0 +1,9 @@
+# Use the base JMeter image
+FROM justb4/jmeter:latest
+
+# Install BlazeMeter Concurrency Thread Group plugin
+# jpgc-casutg = Concurrency Thread Group
+RUN /opt/apache-jmeter-5.5/bin/PluginsManagerCMD.sh install jpgc-casutg
+
+# Verify plugin installation (optional)
+RUN /opt/apache-jmeter-5.5/bin/PluginsManagerCMD.sh list

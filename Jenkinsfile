@@ -2,12 +2,18 @@ pipeline {
     agent any
 
     environment {
-        // Host workspace path where Jenkins volume is mounted
-        HOST_WORKSPACE = "/var/lib/docker/volumes/jenkins_home/_data/workspace/${JOB_NAME}"
+        WORKSPACE_PATH = "/var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA"
+        JMX_FILE = "${WORKSPACE_PATH}/API_TestPlan.jmx"
+        RESULTS_DIR = "${WORKSPACE_PATH}/results"
+        JMETER_IMAGE = "jmeter-with-plugins:latest"
+        WSO2_IMAGE = "myapi-img:v1"
+        WSO2_CONTAINER = "myapi-container"
+        NETWORK_NAME = "jenkins-net"
     }
 
     stages {
-        stage('Declarative: Checkout SCM') {
+
+        stage('Checkout SCM') {
             steps {
                 checkout scm
             }
@@ -16,16 +22,14 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 echo "🛠 Preparing workspace..."
-                sh """
-                    mkdir -p ${HOST_WORKSPACE}/results
-                """
+                sh "mkdir -p ${RESULTS_DIR}"
             }
         }
 
         stage('Build WSO2 Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t myapi-img:v1 ."
+                sh "docker build -t ${WSO2_IMAGE} ."
             }
         }
 
@@ -33,8 +37,8 @@ pipeline {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop myapi-container || true
-                    docker rm myapi-container || true
+                    docker stop ${WSO2_CONTAINER} || true
+                    docker rm ${WSO2_CONTAINER} || true
                 """
             }
         }
@@ -43,8 +47,8 @@ pipeline {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
-                    docker network create jenkins-net || true
-                    docker run -d --name myapi-container --network jenkins-net -p 8290:8290 -p 8253:8253 myapi-img:v1
+                    docker network create ${NETWORK_NAME} || true
+                    docker run -d --name ${WSO2_CONTAINER} --network ${NETWORK_NAME} -p 8290:8290 -p 8253:8253 ${WSO2_IMAGE}
                 """
             }
         }
@@ -54,11 +58,17 @@ pipeline {
                 echo "⏳ Waiting for API to be ready..."
                 script {
                     retry(10) {
-                        sh """
-                            docker run --rm --network jenkins-net busybox \
-                                sh -c 'wget -qO- http://myapi-container:8290/appointmentservices/getAppointment >/dev/null; echo \$?'
-                        """
-                        echo "✅ API is ready!"
+                        def status = sh(
+                            script: "docker run --rm --network ${NETWORK_NAME} busybox sh -c 'wget -qO- http://${WSO2_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
+                            returnStdout: true
+                        ).trim()
+                        if (status != "0") {
+                            echo "Attempt API not ready yet, retrying..."
+                            sleep 5
+                            error("API not ready")
+                        } else {
+                            echo "✅ API is ready!"
+                        }
                     }
                 }
             }
@@ -68,9 +78,9 @@ pipeline {
             steps {
                 echo "📄 Making JMX available for JMeter..."
                 sh """
-                    mkdir -p ${HOST_WORKSPACE}/results
-                    cp ${WORKSPACE}/API_TestPlan.jmx ${HOST_WORKSPACE}/API_TestPlan.jmx
-                    ls -l ${HOST_WORKSPACE}
+                    mkdir -p ${RESULTS_DIR}
+                    cp ${JMX_FILE} ${WORKSPACE_PATH}/API_TestPlan.jmx
+                    ls -l ${WORKSPACE_PATH}
                 """
             }
         }
@@ -79,19 +89,20 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    docker run --rm --name jmeter-agent --network jenkins-net \
-                        -v ${HOST_WORKSPACE}/API_TestPlan.jmx:/tests/API_TestPlan.jmx:ro \
-                        -v ${HOST_WORKSPACE}/results:/tests/results:rw \
-                        -w /tests justb4/jmeter:latest \
-                        -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
+                    docker run --rm --name jmeter-agent \
+                        --network ${NETWORK_NAME} \
+                        -v ${WORKSPACE_PATH}/API_TestPlan.jmx:/tests/API_TestPlan.jmx:ro \
+                        -v ${RESULTS_DIR}:/tests/results:rw \
+                        -w /tests ${JMETER_IMAGE} \
+                        -n -t /tests/API_TestPlan.jmx \
+                        -l /tests/results/report.jtl
                 """
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
-                echo "📂 Archiving JMeter report..."
-                archiveArtifacts artifacts: 'results/report.jtl', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'results/**', allowEmptyArchive: true
             }
         }
     }
@@ -100,8 +111,8 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop myapi-container || true
-                docker rm myapi-container || true
+                docker stop ${WSO2_CONTAINER} || true
+                docker rm ${WSO2_CONTAINER} || true
                 docker stop jmeter-agent || true
                 docker rm jmeter-agent || true
             """
