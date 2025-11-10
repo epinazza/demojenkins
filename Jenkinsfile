@@ -95,9 +95,9 @@ pipeline {
                 sh """
                     docker run --rm --name ${JMETER_CONTAINER} \
                     --network ${NETWORK} \
-                    -v ${WORKSPACE}:/tests \
-                    -w /tests ${JMETER_IMAGE} \
-                    -n -t /tests/${JMX_FILE} -l /tests/${RESULTS_DIR}/report.jtl
+                    -v ${WORKSPACE}:${WORKSPACE} \
+                    -w ${WORKSPACE} ${JMETER_IMAGE} \
+                    -n -t ${WORKSPACE}/${JMX_FILE} -l ${WORKSPACE}/${RESULTS_DIR}/report.jtl
                 """
             }
         }
