@@ -46,7 +46,7 @@ pipeline {
         stage('Wait for API Ready') {
             steps {
                 echo "⏳ Waiting for API to be ready..."
-                retry(15) { // Retry 15 times with 2-second intervals
+                retry(15) { // Retry 15 times, 2-second interval
                     sh """
                         STATUS_CODE=\$(curl -s -o /dev/null -w %{http_code} http://localhost:${API_PORT}/appointmentservices/getAppointment || echo 000)
                         echo "HTTP status: \$STATUS_CODE"
@@ -59,6 +59,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Load Test with JMeter') {
             steps {
