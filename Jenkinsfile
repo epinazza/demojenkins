@@ -66,7 +66,7 @@ pipeline {
         stage('Check JMX File') {
             steps {
                 echo "📄 Checking JMX file..."
-                sh 'test -f test2.jmx || { echo "JMX file not found!"; exit 1; }'
+                sh 'test -f API_TestPlan.jmx || { echo "JMX file not found!"; exit 1; }'
             }
         }
 
@@ -74,8 +74,8 @@ pipeline {
             steps {
                 echo "🏋️ Running Load Test with JMeter..."
                 sh '''
-                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/test2.jmx:/test2.jmx jmeter:5.7 \
-                    -n -t /test2.jmx -l /results/result.jtl
+                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/API_TestPlan.jmx:/API_TestPlan.jmx jmeter:latest \
+                    -n -t /API_TestPlan.jmx -l /results/result.jtl
                 '''
             }
         }
