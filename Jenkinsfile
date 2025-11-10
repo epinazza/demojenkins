@@ -2,30 +2,29 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "myapi-img"
+        DOCKER_IMAGE = "myapi-img:v1"
         CONTAINER_NAME = "myapi-container"
         NETWORK_NAME = "jenkins-net"
-        API_PORT = "8290"
-        MANAGEMENT_PORT = "8253"
-        JMETER_TEST = "tests/API_TestPlan.jmx"
-        JMETER_RESULT_JTL = "results/results.jtl"
-        JMETER_RESULT_HTML = "results/html"
-        JMETER_SUMMARY = "results/summary.txt"
-        RESPONSE_THRESHOLD = "500" // milliseconds
+        JMETER_IMAGE = "justb4/jmeter:latest"
+        TEST_PLAN_PATH = "/tests/API_TestPlan.jmx"
+        RESULTS_DIR = "results"
+        HTML_REPORT_DIR = "results/html"
+        PORT_1 = "8290"
+        PORT_2 = "8253"
     }
 
     stages {
 
         stage('Prepare') {
             steps {
-                echo 'Workspace ready: Jenkins will clone repository automatically'
+                echo "Workspace ready: Jenkins will clone repository automatically"
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 echo "🔧 Building Docker image"
-                sh "docker build -t ${IMAGE_NAME}:v1 ."
+                sh "docker build -t ${DOCKER_IMAGE} ."
             }
         }
 
@@ -43,12 +42,8 @@ pipeline {
             steps {
                 echo "🚀 Running new container..."
                 sh """
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        --network ${NETWORK_NAME} \
-                        -p ${API_PORT}:${API_PORT} \
-                        -p ${MANAGEMENT_PORT}:${MANAGEMENT_PORT} \
-                        ${IMAGE_NAME}:v1
+                    docker run -d --name ${CONTAINER_NAME} --network ${NETWORK_NAME} \
+                    -p ${PORT_1}:${PORT_1} -p ${PORT_2}:${PORT_2} ${DOCKER_IMAGE}
                 """
             }
         }
@@ -58,7 +53,7 @@ pipeline {
                 echo "⏳ Wait 30 seconds for WSO2 MI to fully start..."
                 sh """
                     sleep 30
-                    curl -I http://localhost:${API_PORT} || true
+                    curl -I http://localhost:${PORT_1} || true
                 """
             }
         }
@@ -67,14 +62,11 @@ pipeline {
             steps {
                 echo "⚙️ Running JMeter load test in Docker..."
                 sh """
-                    mkdir -p results
-                    docker run --rm \
-                        -v $PWD/tests:/tests \
-                        -v $PWD/results:/results \
-                        justb4/jmeter:5.6.2 \
-                        -n -t /tests/API_TestPlan.jmx \
-                        -l /results/results.jtl \
-                        -e -o /results/html | tee results/summary.txt
+                    mkdir -p ${RESULTS_DIR}
+                    docker run --rm -v ${WORKSPACE}/tests:/tests \
+                    -v ${WORKSPACE}/${RESULTS_DIR}:/results \
+                    ${JMETER_IMAGE} -n -t ${TEST_PLAN_PATH} \
+                    -l /results/results.jtl -e -o /results/html | tee ${RESULTS_DIR}/summary.txt
                 """
             }
         }
@@ -84,19 +76,21 @@ pipeline {
                 echo "📊 Evaluating performance based on JMeter summary..."
                 script {
                     def avgResponse = sh(
-                        script: "grep -E 'summary =' ${JMETER_SUMMARY} | awk '{print \$10}' | tail -n 1",
+                        script: "grep -E 'summary =' ${RESULTS_DIR}/summary.txt | awk '{print \$10}' | tail -n 1",
                         returnStdout: true
                     ).trim()
-                    
+
                     if (!avgResponse) {
-                        error("⚠️ Could not find average response time in summary report.")
+                        error "⚠️ Could not find average response time in summary report."
+                    }
+
+                    def threshold = 50
+                    echo "Average Response Time: ${avgResponse} ms"
+
+                    if (avgResponse.toFloat() > threshold) {
+                        error "❌ Average response time (${avgResponse} ms) exceeded threshold (${threshold} ms)"
                     } else {
-                        echo "Average response time: ${avgResponse} ms"
-                        if (avgResponse.toFloat() > RESPONSE_THRESHOLD.toFloat()) {
-                            error("❌ Build failed: Average response time ${avgResponse} ms > ${RESPONSE_THRESHOLD} ms")
-                        } else {
-                            echo "✅ Performance within threshold."
-                        }
+                        echo "✅ Performance within acceptable range (${avgResponse} ms ≤ ${threshold} ms)"
                     }
                 }
             }
@@ -110,7 +104,17 @@ pipeline {
                 docker stop ${CONTAINER_NAME} || true
                 docker rm ${CONTAINER_NAME} || true
             """
-            echo "✅ Pipeline finished!"
+        }
+
+        success {
+            echo "📁 Archiving JMeter HTML report to Jenkins..."
+            archiveArtifacts artifacts: "${HTML_REPORT_DIR}/**", allowEmptyArchive: true
+            echo "✅ Pipeline finished successfully!"
+        }
+
+        failure {
+            echo "⚠️ Pipeline failed! Archiving any existing results..."
+            archiveArtifacts artifacts: "${HTML_REPORT_DIR}/**", allowEmptyArchive: true
         }
     }
 }
