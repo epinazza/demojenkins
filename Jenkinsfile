@@ -98,7 +98,7 @@ pipeline {
                     -v ${WORKSPACE}/${JMX_FILE}:/tests/${JMX_FILE} \
                     -v ${WORKSPACE}/results:/results \
                     ${JMETER_IMAGE} \
-                    jmeter -n -t /tests/${JMX_FILE} -l /results/report.jtl
+                    -n -t /tests/${JMX_FILE} -l /results/report.jtl
                 """
             }
         }
