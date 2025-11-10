@@ -2,8 +2,10 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_NETWORK = "jenkins-net"
-        RESULTS_DIR = "${WORKSPACE}/results"
+        DOCKER_NETWORK = 'jenkins-net'
+        API_CONTAINER_NAME = 'myapi-container'
+        API_IMAGE = 'myapi-img:v1'
+        JMETER_CONTAINER_NAME = 'jmeter-agent'
     }
 
     stages {
@@ -17,14 +19,14 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 echo "🛠 Preparing workspace..."
-                sh "mkdir -p ${RESULTS_DIR}"
+                sh 'mkdir -p ${WORKSPACE}/results'
             }
         }
 
         stage('Build WSO2 Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t myapi-img:v1 ."
+                sh "docker build -t ${API_IMAGE} ."
             }
         }
 
@@ -32,8 +34,8 @@ pipeline {
             steps {
                 echo "🧹 Cleaning up old WSO2 container (if any)..."
                 sh """
-                    docker stop myapi-container || true
-                    docker rm myapi-container || true
+                    docker stop ${API_CONTAINER_NAME} || true
+                    docker rm ${API_CONTAINER_NAME} || true
                 """
             }
         }
@@ -43,10 +45,8 @@ pipeline {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
                 sh """
                     docker network create ${DOCKER_NETWORK} || true
-                    docker run -d --name myapi-container \
-                        --network ${DOCKER_NETWORK} \
-                        -p 8290:8290 -p 8253:8253 \
-                        myapi-img:v1
+                    docker run -d --name ${API_CONTAINER_NAME} --network ${DOCKER_NETWORK} \
+                        -p 8290:8290 -p 8253:8253 ${API_IMAGE}
                 """
             }
         }
@@ -55,38 +55,18 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 script {
-                    def maxAttempts = 12
-                    def attempt = 1
-                    while (attempt <= maxAttempts) {
-                        def status = sh(
-                            script: "docker run --rm --network ${DOCKER_NETWORK} busybox sh -c 'wget -qO- http://myapi-container:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
+                    retry(10) {
+                        def code = sh(
+                            script: "docker run --rm --network ${DOCKER_NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER_NAME}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
                             returnStdout: true
                         ).trim()
-
-                        if (status == "0") {
-                            echo "✅ API is ready!"
-                            break
-                        } else {
-                            echo "Attempt ${attempt}: API not ready yet"
+                        if (code != '0') {
+                            echo "Attempt API not ready yet, retrying..."
                             sleep 5
-                            attempt++
+                            error("API not ready yet")
+                        } else {
+                            echo "✅ API is ready!"
                         }
-
-                        if (attempt > maxAttempts) {
-                            error "API failed to start in time."
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Check JMX File') {
-            steps {
-                echo "📄 Checking JMX file..."
-                sh "ls -l ${WORKSPACE}"
-                script {
-                    if (!fileExists("${WORKSPACE}/API_TestPlan.jmx")) {
-                        error "JMX file not found!"
                     }
                 }
             }
@@ -96,13 +76,11 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    # Ensure workspace is accessible to container
                     chmod -R 777 ${WORKSPACE}
-                    mkdir -p ${RESULTS_DIR}
-
-                    docker run --rm --name jmeter-agent \
-                        --network ${DOCKER_NETWORK} \
-                        -v ${WORKSPACE}:/tests:rw \
+                    mkdir -p ${WORKSPACE}/results
+                    docker run --rm --name ${JMETER_CONTAINER_NAME} --network ${DOCKER_NETWORK} \
+                        -v ${WORKSPACE}/API_TestPlan.jmx:/tests/API_TestPlan.jmx:ro \
+                        -v ${WORKSPACE}/results:/tests/results:rw \
                         -w /tests \
                         justb4/jmeter:latest \
                         -n -t /tests/API_TestPlan.jmx -l /tests/results/report.jtl
@@ -112,7 +90,7 @@ pipeline {
 
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: 'results/report.jtl', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'results/**', allowEmptyArchive: true
             }
         }
     }
@@ -121,15 +99,17 @@ pipeline {
         always {
             echo "🧹 Cleaning up Docker containers..."
             sh """
-                docker stop myapi-container || true
-                docker rm myapi-container || true
-                docker stop jmeter-agent || true
-                docker rm jmeter-agent || true
+                docker stop ${API_CONTAINER_NAME} || true
+                docker rm ${API_CONTAINER_NAME} || true
+                docker stop ${JMETER_CONTAINER_NAME} || true
+                docker rm ${JMETER_CONTAINER_NAME} || true
             """
         }
+
         success {
-            echo "✅ Pipeline succeeded!"
+            echo "✅ Pipeline finished successfully!"
         }
+
         failure {
             echo "❌ Pipeline failed!"
         }
