@@ -74,7 +74,7 @@ pipeline {
             steps {
                 echo "🏋️ Running Load Test with JMeter..."
                 sh '''
-                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/API_TestPlan.jmx:/API_TestPlan.jmx jmeter:latest \
+                    docker run --rm -v $(pwd)/${JMETER_RESULTS_DIR}:/results -v $(pwd)/API_TestPlan.jmx:/API_TestPlan.jmx justb4/jmeter:latest \
                     -n -t /API_TestPlan.jmx -l /results/result.jtl
                 '''
             }
