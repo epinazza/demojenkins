@@ -8,7 +8,7 @@ pipeline {
         API_PORT = "8290"
         MANAGEMENT_PORT = "8253"
 
-        # JMeter paths
+        //JMeter paths
         JMETER_TEST = "tests/API_TestPlan.jmx"
         JMETER_RESULT_JTL = "results/results.jtl"
         JMETER_RESULT_HTML = "results/html"
