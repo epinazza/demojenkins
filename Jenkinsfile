@@ -120,7 +120,7 @@ pipeline {
                     echo "✅ Found JMX file at: $JMX_PATH"
                     echo "🧪 Running JMeter test inside Docker..."
 
-                    docker run --rm\
+                    docker run \
                         --name ${JMETER_CONTAINER} \
                         -u 0 \
                         --network ${NETWORK_NAME} \
