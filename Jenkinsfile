@@ -18,6 +18,15 @@ pipeline {
             }
         }
 
+        stage('Checkout SCM') {
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[url: 'https://github.com/epinazza/demojenkins.git']]
+                ])
+            }
+        }
+
         stage('Prepare') {
             steps {
                 echo 'Workspace ready: repository cloned'
