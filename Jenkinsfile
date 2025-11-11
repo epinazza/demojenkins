@@ -101,7 +101,7 @@ pipeline {
        stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test (using alpine/jmeter)..."
-                sh """
+                sh '''
                     echo "Searching for JMX file..."
                     JMX_PATH=$(find ${WORKSPACE} -type f -name "${JMX_FILE}" | head -n 1)
 
@@ -120,7 +120,7 @@ pipeline {
                         -w /workspace \
                         ${JMETER_IMAGE} \
                         -n -t /workspace/${JMX_FILE} -l /results/report.jtl
-                """
+                '''
             }
         }
 
