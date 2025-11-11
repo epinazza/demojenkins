@@ -11,9 +11,24 @@ pipeline {
         RESULTS_DIR = "results"
     }
     stages {
+        stage('Clean Workspace') {
+            steps {
+                echo "🧹 Cleaning workspace..."
+                deleteDir()
+            }
+        }
+        
         stage('Prepare') {
             steps {
                 echo 'Workspace ready: repository cloned'
+            }
+        }
+
+        stage('Prepare Workspace') {
+            steps {
+                echo "📂 Preparing workspace directories..."
+                sh "mkdir -p ${RESULTS_DIR}"
+                sh "rm -rf ${RESULTS_DIR}/* || true"
             }
         }
         stage('Build Docker Image') {
