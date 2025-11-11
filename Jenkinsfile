@@ -111,27 +111,34 @@ pipeline {
             }
         }
 
-        stage('Run JMeter Load Test') {
+      stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
+                    # Clean previous results
+                    rm -rf /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/* || true
+                    mkdir -p /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report
+
                     docker run \
-                    --name jmeter-agent \
-                    --network ${NETWORK_NAME} \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
-                    -w /workspace \
-                    ${JMETER_IMAGE} \
-                    -n -t /workspace/${JMX_FILE} \
-                    -l /results/report.jtl \
-                    -e -o /results/html_report
+                        --name ${JMETER_CONTAINER} \
+                        --network ${NETWORK_NAME} \
+                        -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
+                        -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
+                        -w /workspace \
+                        ${JMETER_IMAGE} \
+                        -Jjmeter.save.saveservice.output_format=csv \
+                        -Jjmeter.save.saveservice.timestamp_format="yyyy-MM-dd HH:mm:ss" \
+                        -n -t /workspace/${JMX_FILE} \
+                        -l /results/report.csv \
+                        -e -o /results/html_report
                 """
             }
         }
 
+
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
+                archiveArtifacts artifacts: "${RESULTS_DIR}/report.csv, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
         
