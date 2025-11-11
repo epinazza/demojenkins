@@ -114,7 +114,7 @@ pipeline {
                         exit 1
                     fi
 
-                    docker run --rm --name ${JMETER_CONTAINER} \
+                    docker run --name ${JMETER_CONTAINER} \
                         --network ${NETWORK_NAME} \
                         -v ${WORKSPACE}:/workspace \
                         -v ${WORKSPACE}/${RESULTS_DIR}:/results \
