@@ -1,112 +1,93 @@
 pipeline {
     agent any
-
     environment {
-        API_IMAGE = "myapi-img:v1"
-        JMETER_IMAGE = "justb4/jmeter:5.5"
-        API_CONTAINER = "myapi-container"
+        IMAGE_NAME = "myapi-img"
+        JMETER_IMAGE = "my-jmeter-img:latest"
+        CONTAINER_NAME = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
-        NETWORK = "jenkins-net"
+        NETWORK_NAME = "jenkins-net"
+        API_PORT = "8290"
         JMX_FILE = "API_TestPlan.jmx"
         RESULTS_DIR = "results"
     }
-
     stages {
-
-        stage('Clean Workspace') {
+        stage('Prepare') {
             steps {
-                echo "🧹 Cleaning workspace..."
-                deleteDir()
+                echo 'Workspace ready: repository cloned'
             }
         }
-
-        stage('Checkout SCM') {
+        stage('Build Docker Image') {
             steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[url: 'https://github.com/epinazza/demojenkins.git']]
-                ])
+                echo "Building Docker image ${IMAGE_NAME}:v1"
+                sh "docker build -t ${IMAGE_NAME}:v1 ."
             }
         }
-
-        stage('Prepare Workspace') {
+        stage('Stop & Remove Old Container') {
             steps {
-                echo "📂 Preparing workspace directories..."
-                sh "mkdir -p ${RESULTS_DIR}"
-                sh "rm -rf ${RESULTS_DIR}/* || true"
-            }
-        }
-
-        stage('Build API Docker Image') {
-            steps {
-                echo "🔧 Building API Docker image..."
-                sh "docker build -t ${API_IMAGE} -f Dockerfile ."
-            }
-        }
-
-        stage('Stop & Remove Old Containers') {
-            steps {
-                echo "🧹 Cleaning up old containers..."
+                echo "Stopping and removing old container if exists"
                 sh """
-                    docker stop ${API_CONTAINER} || true
-                    docker rm ${API_CONTAINER} || true
-                    docker stop ${JMETER_CONTAINER} || true
-                    docker rm ${JMETER_CONTAINER} || true
+                    docker stop ${CONTAINER_NAME} || true
+                    docker rm ${CONTAINER_NAME} || true
                 """
             }
         }
-
-        stage('Run API Container') {
+        stage('Run Docker Container') {
             steps {
-                echo "🚀 Starting API container..."
+                echo "Running new container ${CONTAINER_NAME}"
                 sh """
-                    docker network create ${NETWORK} || true
-                    docker run -d --name ${API_CONTAINER} --network ${NETWORK} -p 8290:8290 -p 8253:8253 ${API_IMAGE}
+                    docker run -d \
+                    --name ${CONTAINER_NAME} \
+                    --network ${NETWORK_NAME} \
+                    -p ${API_PORT}:${API_PORT} \
+                    ${IMAGE_NAME}:v1
                 """
             }
         }
-
-        stage('Wait for API Ready') {
+        stage('Verify Container') {
             steps {
-                echo "⏳ Waiting for API to be ready..."
+                echo 'Listing running containers'
+                sh "docker ps"
+            }
+        }
+        stage('Test APIs') {
+            steps {
                 script {
-                    retry(10) {
-                        def status = sh(
-                            script: "docker run --rm --network ${NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
-                            returnStdout: true
-                        ).trim()
-                        if (status != "0") {
-                            echo "Attempt API not ready yet, retrying..."
-                            sleep 5
-                            error "API not ready"
-                        } else {
-                            echo "✅ API is ready!"
+                    def apis = [
+                        [method: 'GET', path: '/appointmentservices/getAppointment'],
+                        [method: 'PUT', path: '/appointmentservices/setAppointment']
+                    ]
+                    apis.each { api ->
+                        echo "Waiting for ${api.method} ${api.path}..."
+                        def ready = false
+                        for (int i = 1; i <= 12; i++) { // Try 12 times, 10s apart
+                            sleep 10
+                            def status = sh(
+                                script: "curl -o /dev/null -s -w '%{http_code}' -X ${api.method} http://${CONTAINER_NAME}:${API_PORT}${api.path}",
+                                returnStdout: true
+                            ).trim()
+                            echo "Attempt ${i}: HTTP ${status}"
+                            if (status == "200" || status == "202") {
+                                ready = true
+                                echo "${api.method} ${api.path} is ready!"
+                                break
+                            }
+                        }
+                        if (!ready) {
+                            error "${api.method} ${api.path} not ready after 2 minutes"
                         }
                     }
                 }
             }
         }
-
-        stage('Verify JMX File in Workspace') {
-            steps {
-                echo "🔍 Checking for JMX file in workspace..."
-                sh '''
-                    echo "Workspace path: ${WORKSPACE}"
-                    echo "Listing workspace content recursively:"
-                    ls -R ${WORKSPACE} || true
-                '''
-            }
-        }
-
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh '''
-                    # Find the JMX file anywhere in workspace
-                    JMX_PATH=$(find ${WORKSPACE} -type f -name "${JMX_FILE}" | head -n 1)
+                    # Auto-detect JMX file in workspace
+                    JMX_PATH=$(find /workspace -type f -name "${JMX_FILE}" | head -n 1)
 
                     if [ -z "$JMX_PATH" ]; then
-                        echo "❌ Could not find ${JMX_FILE}"
+                        echo "❌ Could not find ${JMX_FILE} inside container path"
                         exit 1
                     fi
 
@@ -115,8 +96,8 @@ pipeline {
 
                     docker run --rm --name ${JMETER_CONTAINER} \
                         --network ${NETWORK} \
-                        -v ${WORKSPACE}:/workspace \
-                        -v ${WORKSPACE}/${RESULTS_DIR}:/results \
+                        -v /var/jenkins_home/workspace/pipelineA:/workspace \
+                        -v /var/jenkins_home/workspace/pipelineA/results:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
                         -n -t "$JMX_PATH" -l /results/report.jtl
@@ -124,27 +105,12 @@ pipeline {
             }
         }
 
-        stage('Archive JMeter Results') {
-            steps {
-                echo "📦 Archiving JMeter results..."
-                archiveArtifacts artifacts: "${RESULTS_DIR}/**/*", allowEmptyArchive: true
-            }
-        }
     }
-
     post {
         always {
-            echo "🧹 Cleaning up Docker containers and network..."
-            sh """
-                docker stop ${API_CONTAINER} || true
-                docker rm ${API_CONTAINER} || true
-                docker stop ${JMETER_CONTAINER} || true
-                docker rm ${JMETER_CONTAINER} || true
-                docker network rm ${NETWORK} || true
-            """
-        }
-        failure {
-            echo "❌ Pipeline failed!"
+            echo "✅ Pipeline finished!"
         }
     }
 }
+ 
+ 
