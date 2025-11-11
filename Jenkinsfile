@@ -108,20 +108,28 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                sh """
-                    if [ ! -f "${WORKSPACE}/${JMX_FILE}" ]; then
-                        echo "❌ JMX file not found in workspace: ${WORKSPACE}/${JMX_FILE}"
+                sh '''
+                    # Detect JMX file in workspace
+                    JMX_PATH=$(find /workspace -type f -name "${JMX_FILE}" | head -n 1)
+
+                    if [ -z "$JMX_PATH" ]; then
+                        echo "❌ Could not find ${JMX_FILE} inside container path"
                         exit 1
                     fi
 
-                    docker run --name ${JMETER_CONTAINER} \
+                    echo "✅ Found JMX file at: $JMX_PATH"
+                    echo "🧪 Running JMeter test inside Docker..."
+
+                    docker run --rm\
+                        --name ${JMETER_CONTAINER} \
+                        -u 0 \
                         --network ${NETWORK_NAME} \
-                        -v ${WORKSPACE}:/workspace \
-                        -v ${WORKSPACE}/${RESULTS_DIR}:/results \
+                        -v /var/jenkins_home/workspace/pipelineA:/workspace \
+                        -v /var/jenkins_home/workspace/pipelineA/${RESULTS_DIR}:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
-                        -n -t /workspace/${JMX_FILE} -l /results/report.jtl
-                """
+                        -n -t "$JMX_PATH" -l /results/report.jtl
+                '''
             }
         }
 
