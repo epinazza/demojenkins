@@ -85,8 +85,8 @@ pipeline {
                     apis.each { api ->
                         echo "Waiting for ${api.method} ${api.path}..."
                         def ready = false
-                        for (int i = 1; i <= 12; i++) { // Try 12 times, 10s apart
-                            sleep 10
+                        for (int i = 1; i <= 12; i++) { // Try 12 times, 5s apart
+                            sleep 5
                             def status = sh(
                                 script: "curl -o /dev/null -s -w '%{http_code}' -X ${api.method} http://${CONTAINER_NAME}:${API_PORT}${api.path}",
                                 returnStdout: true
@@ -108,26 +108,20 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                sh '''
-                    # Auto-detect JMX file in workspace
-                    JMX_PATH=$(find /workspace -type f -name "${JMX_FILE}" | head -n 1)
-
-                    if [ -z "$JMX_PATH" ]; then
-                        echo "❌ Could not find ${JMX_FILE} inside container path"
+                sh """
+                    if [ ! -f "${WORKSPACE}/${JMX_FILE}" ]; then
+                        echo "❌ JMX file not found in workspace: ${WORKSPACE}/${JMX_FILE}"
                         exit 1
                     fi
 
-                    echo "✅ Found JMX file at: $JMX_PATH"
-                    echo "🧪 Running JMeter test inside Docker..."
-
                     docker run --rm --name ${JMETER_CONTAINER} \
-                        --network ${NETWORK} \
-                        -v /var/jenkins_home/workspace/pipelineA:/workspace \
-                        -v /var/jenkins_home/workspace/pipelineA/results:/results \
+                        --network ${NETWORK_NAME} \
+                        -v ${WORKSPACE}:/workspace \
+                        -v ${WORKSPACE}/${RESULTS_DIR}:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
-                        -n -t "$JMX_PATH" -l /results/report.jtl
-                '''
+                        -n -t /workspace/${JMX_FILE} -l /results/report.jtl
+                """
             }
         }
 
