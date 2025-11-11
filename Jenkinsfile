@@ -129,12 +129,34 @@ pipeline {
             }
         }
 
+        stage('Generate JMeter HTML Report') {
+            steps {
+                echo "📊 Generating JMeter HTML report..."
+                sh """
+                    # Create a clean folder for the HTML report
+                    mkdir -p ${RESULTS_DIR}/html_report
+                    rm -rf ${RESULTS_DIR}/html_report/* || true
+
+                    # Run JMeter in report generation mode
+                    docker run --rm \
+                        --name jmeter-agent \
+                        --network ${NETWORK_NAME} \
+                        -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
+                        -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
+                        -w /workspace \
+                        ${JMETER_IMAGE} \
+                        -g /results/report.jtl \
+                        -o /results/html_report
+                """
+            }
+        }
+
         stage('Archive JMeter Report') {
             steps {
                 archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
-        
+
         stage('Publish JMeter HTML Report') {
             steps {
                 script {
