@@ -114,26 +114,28 @@ pipeline {
       stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                sh """
-                    # Clean previous results
-                    rm -rf /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/* || true
+                sh '''
+                    rm -rf /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report || true
                     mkdir -p /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report
 
+                    TIMESTAMP_FORMAT="yyyy-MM-dd HH:mm:ss"
+
                     docker run \
-                        --name ${JMETER_CONTAINER} \
-                        --network ${NETWORK_NAME} \
+                        --name jmeter-agent \
+                        --network jenkins-net \
                         -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
                         -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
                         -w /workspace \
-                        ${JMETER_IMAGE} \
+                        justb4/jmeter:latest \
                         -Jjmeter.save.saveservice.output_format=csv \
-                        "-Jjmeter.save.saveservice.timestamp_format=yyyy-MM-dd HH:mm:ss" \
-                        -n -t /workspace/${JMX_FILE} \
+                        "-Jjmeter.save.saveservice.timestamp_format=${TIMESTAMP_FORMAT}" \
+                        -n -t /workspace/API_TestPlan.jmx \
                         -l /results/report.csv \
                         -e -o /results/html_report
-                """
+                '''
             }
         }
+
 
 
         stage('Archive JMeter Report') {
