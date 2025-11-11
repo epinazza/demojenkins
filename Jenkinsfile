@@ -34,7 +34,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image ${IMAGE_NAME}:v1"
-                sh "docker build -t ${IMAGE_NAME}:v1 -f Dockerfile ."
+                sh "docker build -t ${IMAGE_NAME}:v1 ."
             }
         }
         stage('Stop & Remove Old Container') {
