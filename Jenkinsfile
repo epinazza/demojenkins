@@ -111,24 +111,6 @@ pipeline {
             }
         }
 
-        stage('Run JMeter Load Test') {
-            steps {
-                echo "🏃 Running JMeter load test..."
-                sh """
-                    docker run \
-                    --name jmeter-agent \
-                    --network ${NETWORK_NAME} \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
-                    -w /workspace \
-                    ${JMETER_IMAGE} \
-                    -n -t /workspace/${JMX_FILE} \
-                    -l /results/report.jtl \
-                    -e -o /results/html_report
-                """
-            }
-        }
-
         stage('Generate JMeter HTML Report') {
             steps {
                 echo "📊 Generating JMeter HTML report..."
@@ -145,6 +127,7 @@ pipeline {
                         -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
+                        -n -t /workspace/${JMX_FILE} \
                         -g /results/report.jtl \
                         -o /results/html_report
                 """
