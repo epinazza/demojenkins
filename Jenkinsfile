@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         API_IMAGE = "myapi-img:v1"
-        JMETER_IMAGE = "justb4/jmeter:5.5"  // More standard for CI/CD
+        JMETER_IMAGE = "justb4/jmeter:5.5"
         API_CONTAINER = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
         NETWORK = "jenkins-net"
@@ -92,7 +92,7 @@ pipeline {
                 echo "🔍 Checking for JMX file in workspace..."
                 sh '''
                     echo "Workspace path: ${WORKSPACE}"
-                    echo "Listing workspace content:"
+                    echo "Listing workspace content recursively:"
                     ls -R ${WORKSPACE} || true
                 '''
             }
@@ -102,7 +102,7 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh '''
-                    # Find the JMX file in workspace
+                    # Find the JMX file anywhere in workspace
                     JMX_PATH=$(find ${WORKSPACE} -type f -name "${JMX_FILE}" | head -n 1)
 
                     if [ -z "$JMX_PATH" ]; then
@@ -111,9 +111,8 @@ pipeline {
                     fi
 
                     echo "✅ Found JMX file at: $JMX_PATH"
-                    echo "🧪 Running JMeter test..."
+                    echo "🧪 Running JMeter test inside Docker..."
 
-                    # Run JMeter in Docker
                     docker run --rm --name ${JMETER_CONTAINER} \
                         --network ${NETWORK} \
                         -v ${WORKSPACE}:/workspace \
@@ -135,7 +134,7 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning up Docker containers..."
+            echo "🧹 Cleaning up Docker containers and network..."
             sh """
                 docker stop ${API_CONTAINER} || true
                 docker rm ${API_CONTAINER} || true
