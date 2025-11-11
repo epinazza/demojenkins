@@ -2,16 +2,14 @@ pipeline {
     agent any
 
     environment {
-        API_IMAGE = "myapi-img:v1"
-        JMETER_IMAGE = "justb4/jmeter:latest"
-        API_CONTAINER = "myapi-container"
-        JMETER_CONTAINER = "jmeter-agent"
-        NETWORK = "jenkins-net"
-        JMX_FILE = "API_TestPlan.jmx"
-        RESULTS_DIR = "results"
+        API_IMAGE = 'myapi-img:v1'
+        API_CONTAINER = 'myapi-container'
+        JMETER_CONTAINER = 'jmeter-agent'
+        NETWORK = 'jenkins-net'
     }
 
     stages {
+
         stage('Clean Workspace') {
             steps {
                 echo "🧹 Cleaning workspace..."
@@ -21,45 +19,43 @@ pipeline {
 
         stage('Checkout SCM') {
             steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[url: 'https://github.com/epinazza/demojenkins.git']]
-                ])
+                checkout scm
             }
         }
 
         stage('Prepare Workspace') {
             steps {
-                sh "mkdir -p ${RESULTS_DIR}"
+                sh 'mkdir -p results'
             }
         }
 
         stage('Build API Docker Image') {
             steps {
                 echo "🔧 Building WSO2 Docker image..."
-                sh "docker build -t ${API_IMAGE} -f Dockerfile ."
+                sh 'docker build -t ${API_IMAGE} -f Dockerfile .'
             }
         }
 
         stage('Stop & Remove Old Containers') {
             steps {
                 echo "🧹 Cleaning up old containers..."
-                sh """
-                    docker stop ${API_CONTAINER} || true
-                    docker rm ${API_CONTAINER} || true
-                    docker stop ${JMETER_CONTAINER} || true
-                    docker rm ${JMETER_CONTAINER} || true
-                """
+                sh '''
+                docker stop ${API_CONTAINER} || true
+                docker rm ${API_CONTAINER} || true
+                docker stop ${JMETER_CONTAINER} || true
+                docker rm ${JMETER_CONTAINER} || true
+                '''
             }
         }
 
         stage('Run API Container') {
             steps {
                 echo "🚀 Starting WSO2 Micro Integrator container..."
-                sh """
-                    docker network create ${NETWORK} || true
-                    docker run -d --name ${API_CONTAINER} --network ${NETWORK} -p 8290:8290 -p 8253:8253 ${API_IMAGE}
-                """
+                sh '''
+                docker network create ${NETWORK} || true
+                docker run -d --name ${API_CONTAINER} --network ${NETWORK} \
+                    -p 8290:8290 -p 8253:8253 ${API_IMAGE}
+                '''
             }
         }
 
@@ -67,17 +63,17 @@ pipeline {
             steps {
                 echo "⏳ Waiting for API to be ready..."
                 script {
-                    retry(10) {
-                        def status = sh(
-                            script: "docker run --rm --network ${NETWORK} busybox sh -c 'wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo \$?'",
-                            returnStdout: true
-                        ).trim()
-                        if (status != "0") {
+                    retry(3) {
+                        try {
+                            sh '''
+                            docker run --rm --network ${NETWORK} busybox sh -c \
+                            "wget -qO- http://${API_CONTAINER}:8290/appointmentservices/getAppointment >/dev/null; echo $?"
+                            '''
+                            echo "✅ API is ready!"
+                        } catch (err) {
                             echo "Attempt API not ready yet, retrying..."
                             sleep 5
-                            error "API not ready"
-                        } else {
-                            echo "✅ API is ready!"
+                            error("API not ready")
                         }
                     }
                 }
@@ -86,38 +82,32 @@ pipeline {
 
         stage('Debug Docker Mounts') {
             steps {
-                echo "🛠️ Checking mounted files inside Docker..."
-                sh """
-                    docker run --rm --entrypoint sh \
-                    -v ${WORKSPACE}:/tests \
-                    -v ${WORKSPACE}/${RESULTS_DIR}:/results \
-                    ${JMETER_IMAGE} \
-                    -c "ls -l /tests"
-                """
+                echo "🛠️ Checking mounted files inside alpine/jmeter..."
+                sh '''
+                docker run --rm -v ${WORKSPACE}:/tests -v ${WORKSPACE}/results:/results \
+                  alpine/jmeter sh -c "ls -l /tests && ls -l /results"
+                '''
             }
         }
 
         stage('Run JMeter Load Test') {
             steps {
-                echo "🏃 Running JMeter load test..."
-
-                sh "ls -l ${WORKSPACE}/${JMX_FILE}"
-
-                sh """
-                    docker run --rm --name ${JMETER_CONTAINER} \
-                    --network ${NETWORK} \
-                    -v ${WORKSPACE}:${WORKSPACE} \
-                    -v ${WORKSPACE}/${RESULTS_DIR}:${WORKSPACE}/${RESULTS_DIR} \
-                    -w ${WORKSPACE} \
-                    ${JMETER_IMAGE} \
-                    -n -t ${JMX_FILE} -l ${RESULTS_DIR}/report.jtl
-                """
+                echo "🏃 Running JMeter load test (using alpine/jmeter)..."
+                sh '''
+                docker run --rm --name ${JMETER_CONTAINER} --network ${NETWORK} \
+                  -v ${WORKSPACE}:/tests \
+                  -v ${WORKSPACE}/results:/results \
+                  -w /tests \
+                  alpine/jmeter \
+                  -n -t API_TestPlan.jmx -l /results/report.jtl
+                '''
             }
         }
 
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl", allowEmptyArchive: true
+                echo "📦 Archiving JMeter report..."
+                archiveArtifacts artifacts: 'results/report.jtl', fingerprint: true
             }
         }
     }
@@ -125,12 +115,15 @@ pipeline {
     post {
         always {
             echo "🧹 Cleaning up Docker containers..."
-            sh """
-                docker stop ${API_CONTAINER} || true
-                docker rm ${API_CONTAINER} || true
-                docker stop ${JMETER_CONTAINER} || true
-                docker rm ${JMETER_CONTAINER} || true
-            """
+            sh '''
+            docker stop ${API_CONTAINER} || true
+            docker rm ${API_CONTAINER} || true
+            docker stop ${JMETER_CONTAINER} || true
+            docker rm ${JMETER_CONTAINER} || true
+            '''
+        }
+        success {
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
             echo "❌ Pipeline failed!"
