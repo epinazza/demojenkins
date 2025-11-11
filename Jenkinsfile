@@ -40,12 +40,14 @@ pipeline {
                 sh "rm -rf ${RESULTS_DIR}/* || true"
             }
         }
+
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image ${IMAGE_NAME}:v1"
                 sh "docker build -t ${IMAGE_NAME}:v1 ."
             }
         }
+
         stage('Stop & Remove Old Container') {
             steps {
                 echo "Stopping and removing old container if exists"
@@ -57,6 +59,7 @@ pipeline {
                 """
             }
         }
+
         stage('Run Docker Container') {
             steps {
                 echo "Running new container ${CONTAINER_NAME}"
@@ -69,12 +72,14 @@ pipeline {
                 """
             }
         }
+
         stage('Verify Container') {
             steps {
                 echo 'Listing running containers'
                 sh "docker ps"
             }
         }
+
         stage('Test APIs') {
             steps {
                 script {
@@ -105,34 +110,35 @@ pipeline {
                 }
             }
         }
+
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
                     docker run \
                     --name jmeter-agent \
-                    --network jenkins-net \
+                    --network ${NETWORK_NAME} \
                     -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
                     -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
                     -w /workspace \
-                    justb4/jmeter:latest \
-                    -n -t /workspace/API_TestPlan.jmx -l /results/report.jtl
+                    ${JMETER_IMAGE} \
+                    -n -t /workspace/${JMX_FILE} \
+                    -l /results/report.jtl \
+                    -e -o /results/html_report
                 """
             }
         }
-        
+
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl", allowEmptyArchive: true
+                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
-
     }
+
     post {
         always {
             echo "✅ Pipeline finished!"
         }
     }
 }
- 
- 
