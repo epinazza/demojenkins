@@ -98,10 +98,10 @@ pipeline {
         }
 
         // ✅ Updated JMeter run with auto-detection and working mount
-        stage('Run JMeter Load Test') {
+       stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test (using alpine/jmeter)..."
-                sh '''
+                sh """
                     echo "Searching for JMX file..."
                     JMX_PATH=$(find ${WORKSPACE} -type f -name "${JMX_FILE}" | head -n 1)
 
@@ -119,10 +119,11 @@ pipeline {
                         -v ${WORKSPACE}/results:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
-                        -n -t "${JMX_PATH#/var/jenkins_home/workspace/}" -l /results/report.jtl
-                '''
+                        -n -t /workspace/${JMX_FILE} -l /results/report.jtl
+                """
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
