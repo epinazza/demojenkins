@@ -85,8 +85,8 @@ pipeline {
                     apis.each { api ->
                         echo "Waiting for ${api.method} ${api.path}..."
                         def ready = false
-                        for (int i = 1; i <= 12; i++) { // Try 12 times, 5s apart
-                            sleep 5
+                        for (int i = 1; i <= 12; i++) { // Try 12 times, 10s apart
+                            sleep 10
                             def status = sh(
                                 script: "curl -o /dev/null -s -w '%{http_code}' -X ${api.method} http://${CONTAINER_NAME}:${API_PORT}${api.path}",
                                 returnStdout: true
