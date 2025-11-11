@@ -120,6 +120,12 @@ pipeline {
                 """
             }
         }
+        
+        stage('Archive JMeter Report') {
+            steps {
+                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl", allowEmptyArchive: true
+            }
+        }
 
     }
     post {
