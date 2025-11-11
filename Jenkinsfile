@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         API_IMAGE = "myapi-img:v1"
-        JMETER_IMAGE = "alpine/jmeter:latest"
+        JMETER_IMAGE = "justb4/jmeter:5.5"  // More standard for CI/CD
         API_CONTAINER = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
         NETWORK = "jenkins-net"
@@ -31,13 +31,15 @@ pipeline {
 
         stage('Prepare Workspace') {
             steps {
+                echo "📂 Preparing workspace directories..."
                 sh "mkdir -p ${RESULTS_DIR}"
+                sh "rm -rf ${RESULTS_DIR}/* || true"
             }
         }
 
         stage('Build API Docker Image') {
             steps {
-                echo "🔧 Building WSO2 Docker image..."
+                echo "🔧 Building API Docker image..."
                 sh "docker build -t ${API_IMAGE} -f Dockerfile ."
             }
         }
@@ -56,7 +58,7 @@ pipeline {
 
         stage('Run API Container') {
             steps {
-                echo "🚀 Starting WSO2 Micro Integrator container..."
+                echo "🚀 Starting API container..."
                 sh """
                     docker network create ${NETWORK} || true
                     docker run -d --name ${API_CONTAINER} --network ${NETWORK} -p 8290:8290 -p 8253:8253 ${API_IMAGE}
@@ -85,7 +87,6 @@ pipeline {
             }
         }
 
-        // ✅ New debug stage to confirm where the JMX file actually is
         stage('Verify JMX File in Workspace') {
             steps {
                 echo "🔍 Checking for JMX file in workspace..."
@@ -97,37 +98,37 @@ pipeline {
             }
         }
 
-        // ✅ Updated JMeter run with auto-detection and working mount
-       stage('Run JMeter Load Test') {
+        stage('Run JMeter Load Test') {
             steps {
-                echo "🏃 Running JMeter load test (using alpine/jmeter)..."
+                echo "🏃 Running JMeter load test..."
                 sh '''
-                    echo "Searching for JMX file..."
+                    # Find the JMX file in workspace
                     JMX_PATH=$(find ${WORKSPACE} -type f -name "${JMX_FILE}" | head -n 1)
 
                     if [ -z "$JMX_PATH" ]; then
-                        echo "❌ Error: Could not find ${JMX_FILE} anywhere under ${WORKSPACE}"
+                        echo "❌ Could not find ${JMX_FILE}"
                         exit 1
                     fi
 
                     echo "✅ Found JMX file at: $JMX_PATH"
-                    echo "🧪 Running JMeter test now..."
+                    echo "🧪 Running JMeter test..."
 
+                    # Run JMeter in Docker
                     docker run --rm --name ${JMETER_CONTAINER} \
                         --network ${NETWORK} \
                         -v ${WORKSPACE}:/workspace \
-                        -v ${WORKSPACE}/results:/results \
+                        -v ${WORKSPACE}/${RESULTS_DIR}:/results \
                         -w /workspace \
                         ${JMETER_IMAGE} \
-                        -n -t /workspace/${JMX_FILE} -l /results/report.jtl
+                        -n -t "$JMX_PATH" -l /results/report.jtl
                 '''
             }
         }
 
-
-        stage('Archive JMeter Report') {
+        stage('Archive JMeter Results') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl", allowEmptyArchive: true
+                echo "📦 Archiving JMeter results..."
+                archiveArtifacts artifacts: "${RESULTS_DIR}/**/*", allowEmptyArchive: true
             }
         }
     }
@@ -140,6 +141,7 @@ pipeline {
                 docker rm ${API_CONTAINER} || true
                 docker stop ${JMETER_CONTAINER} || true
                 docker rm ${JMETER_CONTAINER} || true
+                docker network rm ${NETWORK} || true
             """
         }
         failure {
