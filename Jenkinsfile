@@ -127,7 +127,7 @@ pipeline {
                         -w /workspace \
                         ${JMETER_IMAGE} \
                         -Jjmeter.save.saveservice.output_format=csv \
-                        -Jjmeter.save.saveservice.timestamp_format="yyyy-MM-dd HH:mm:ss" \
+                        "-Jjmeter.save.saveservice.timestamp_format=yyyy-MM-dd HH:mm:ss" \
                         -n -t /workspace/${JMX_FILE} \
                         -l /results/report.csv \
                         -e -o /results/html_report
