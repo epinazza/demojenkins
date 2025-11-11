@@ -134,6 +134,28 @@ pipeline {
                 archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
+        
+        stage('Publish JMeter HTML Report') {
+            steps {
+                script {
+                    // Make sure the HTML report folder exists
+                    def reportDir = "${RESULTS_DIR}/html_report"
+                    if (fileExists(reportDir)) {
+                        publishHTML([
+                            reportDir: reportDir,
+                            reportFiles: 'index.html',
+                            reportName: 'JMeter Load Test Report',
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true
+                        ])
+                    } else {
+                        echo "❌ HTML report folder does not exist: ${reportDir}"
+                    }
+                }
+            }
+        }
+
     }
 
     post {
