@@ -123,8 +123,8 @@ pipeline {
                     -w /workspace \
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
-                    -l /results/report.jtl \
-                    -Jjmeter.save.saveservice.output_format=xml \
+                    -l /results/report.csv \
+                    -Jjmeter.save.saveservice.output_format=csv \
                     -Jjmeter.save.saveservice.response_data=true \
                     -Jjmeter.save.saveservice.samplerData=true \
                     -e -o /results/html_report
@@ -134,7 +134,7 @@ pipeline {
 
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
+                archiveArtifacts artifacts: "${RESULTS_DIR}/report.csv, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
         
