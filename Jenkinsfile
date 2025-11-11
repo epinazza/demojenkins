@@ -114,11 +114,12 @@ pipeline {
       stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
+                echo "Timestamp argument test:"
+                echo "-Jjmeter.save.saveservice.timestamp_format=\"yyyy-MM-dd HH:mm:ss\""
+
                 sh '''
                     rm -rf /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report || true
                     mkdir -p /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report
-
-                    TIMESTAMP_FORMAT="yyyy-MM-dd HH:mm:ss"
 
                     docker run \
                         --name jmeter-agent \
@@ -128,15 +129,13 @@ pipeline {
                         -w /workspace \
                         justb4/jmeter:latest \
                         -Jjmeter.save.saveservice.output_format=csv \
-                        "-Jjmeter.save.saveservice.timestamp_format=${TIMESTAMP_FORMAT}" \
+                        "-Jjmeter.save.saveservice.timestamp_format=\"yyyy-MM-dd HH:mm:ss\"" \
                         -n -t /workspace/API_TestPlan.jmx \
                         -l /results/report.csv \
                         -e -o /results/html_report
                 '''
             }
         }
-
-
 
         stage('Archive JMeter Report') {
             steps {
