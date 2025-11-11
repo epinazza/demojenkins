@@ -17,7 +17,7 @@ pipeline {
                 deleteDir()
             }
         }
-        
+
         stage('Prepare') {
             steps {
                 echo 'Workspace ready: repository cloned'
@@ -43,6 +43,8 @@ pipeline {
                 sh """
                     docker stop ${CONTAINER_NAME} || true
                     docker rm ${CONTAINER_NAME} || true
+                    docker stop ${JMETER_CONTAINER} || true
+                    docker rm ${JMETER_CONTAINER} || true
                 """
             }
         }
