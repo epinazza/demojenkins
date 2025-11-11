@@ -129,7 +129,7 @@ pipeline {
                         -w /workspace \
                         justb4/jmeter:latest \
                         -Jjmeter.save.saveservice.output_format=csv \
-                        "-Jjmeter.save.saveservice.timestamp_format=\"yyyy-MM-dd HH:mm:ss\"" \
+                        "-Jjmeter.save.saveservice.timestamp_format=yyyy-MM-dd HH:mm:ss" \
                         -n -t /workspace/API_TestPlan.jmx \
                         -l /results/report.csv \
                         -e -o /results/html_report
