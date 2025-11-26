@@ -75,13 +75,6 @@ pipeline {
             }
         }
 
-        stage('Verify Container') {
-            steps {
-                echo 'Listing running containers'
-                sh "docker ps"
-            }
-        }
-
         stage('Test APIs') {
             steps {
                 script {
