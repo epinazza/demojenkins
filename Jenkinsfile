@@ -133,7 +133,7 @@ pipeline {
 
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/report.csv, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
+                archiveArtifacts artifacts: "${RESULTS_DIR}/results.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
         
