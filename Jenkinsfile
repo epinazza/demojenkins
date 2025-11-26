@@ -123,10 +123,7 @@ pipeline {
                     -w /workspace \
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
-                    -l /results/report.csv \
-                    -Jjmeter.save.saveservice.output_format=csv \
-                    -Jjmeter.save.saveservice.response_data=true \
-                    -Jjmeter.save.saveservice.samplerData=true \
+                    -l /results/results.jtl \
                     -e -o /results/html_report
                 """
             }
@@ -167,5 +164,3 @@ pipeline {
         }
     }
 }
-
-//done
