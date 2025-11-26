@@ -126,7 +126,7 @@ pipeline {
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
                     -l /results/results.jtl \
-                    -e -o /results/html_report
+                    -e -o /results/html_report \
                     -Jjmeter.save.saveservice.output_format=csv \
                     -Jjmeter.save.saveservice.label=true \
                     -Jjmeter.save.saveservice.response_code=true \
