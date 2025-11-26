@@ -119,7 +119,7 @@ pipeline {
                     --name jmeter-agent \
                     --network ${NETWORK_NAME} \
                     -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
+                    -v /var/lib/docker/volumes/jenkins_home/workspace/pipelineA/results:/results \
                     -w /workspace \
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
