@@ -13,10 +13,12 @@ pipeline {
     stages {
         stage('Clean Workspace') {
             steps {
-                echo "🧹 Cleaning workspace..."
-                deleteDir()
+                echo "🧹 Cleaning workspace except results directory..."
+                sh "mkdir -p results"
+                sh "rm -rf results/*"
             }
         }
+
 
         stage('Checkout SCM') {
             steps {
