@@ -136,8 +136,16 @@ pipeline {
                     -Jjmeter.save.saveservice.thread_counts=true \
                     -Jjmeter.save.saveservice.latency=true
                 """
+
+                // 🔍 Verify output files
+                sh "echo 'Listing results directory:'"
+                sh "ls -l results/"
+
+                sh "echo 'Showing first 20 lines of results.jtl:'"
+                sh "head -n 20 results/results.jtl"
             }
         }
+
 
         stage('Archive JMeter Report') {
             steps {
