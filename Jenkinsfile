@@ -127,6 +127,14 @@ pipeline {
                     -n -t /workspace/${JMX_FILE} \
                     -l /results/results.jtl \
                     -e -o /results/html_report
+                    -Jjmeter.save.saveservice.output_format=csv \
+                    -Jjmeter.save.saveservice.label=true \
+                    -Jjmeter.save.saveservice.response_code=true \
+                    -Jjmeter.save.saveservice.success=true \
+                    -Jjmeter.save.saveservice.bytes=true \
+                    -Jjmeter.save.saveservice.sent_bytes=true \
+                    -Jjmeter.save.saveservice.thread_counts=true \
+                    -Jjmeter.save.saveservice.latency=true
                 """
             }
         }
