@@ -120,6 +120,8 @@ pipeline {
                     docker run \
                     --name jmeter-agent \
                     --network ${NETWORK_NAME} \
+                    -v /etc/localtime:/etc/localtime:ro \
+                    -v /etc/timezone:/etc/timezone:ro \
                     -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
                     -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
                     -w /workspace \
