@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
         IMAGE_NAME = "myapi-img"
-        JMETER_IMAGE = "ghcr.io/apache/jmeter:5.6.3"
+        JMETER_IMAGE = "apache/jmeter:5.6.3"
         CONTAINER_NAME = "myapi-container"
         JMETER_CONTAINER = "jmeter-agent"
         NETWORK_NAME = "jenkins-net"
