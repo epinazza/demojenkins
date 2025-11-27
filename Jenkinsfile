@@ -109,23 +109,28 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
+                
+                // Ensure results folder exists and is writable
+                sh '''
+                mkdir -p ${WORKSPACE}/results/html_report
+                chmod -R 777 ${WORKSPACE}/results
+                '''
+
+                // Run JMeter in Docker
                 sh """
-                    # Ensure results directories exist
-                    mkdir -p ${WORKSPACE}/results/html_report
-                    
-                    # Run JMeter with correct args
-                    docker run --rm \
-                        --name ${JMETER_CONTAINER} \
-                        --network ${NETWORK_NAME} \
-                        -v ${WORKSPACE}:/workspace \
-                        -w /workspace \
-                        ${JMETER_IMAGE} \
-                        -n -t ${JMX_FILE} \
-                        -l results/results.jtl \
-                        -e -o results/html_report
+                docker run --rm \
+                --name jmeter-agent \
+                --network jenkins-net \
+                -v ${WORKSPACE}:/workspace \
+                -w /workspace \
+                alpine/jmeter:latest \
+                -n -t API_TestPlan.jmx \
+                -l results/results.jtl \
+                -e -o results/html_report
                 """
             }
         }
+
 
 
         stage('Archive JMeter Report') {
