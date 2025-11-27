@@ -120,8 +120,8 @@ pipeline {
                     -w /workspace \
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
-                    -l /results/results.jtl \
-                    -e -o /results/html_report
+                    -l /${RESULTS_DIR}/results.jtl \
+                    -e -o /${RESULTS_DIR}/html_report
                 """
             }
         }
@@ -135,22 +135,15 @@ pipeline {
         
         stage('Publish JMeter HTML Report') {
             steps {
-                script {
-                    // Make sure the HTML report folder exists
-                    def reportDir = "${RESULTS_DIR}/html_report"
-                    if (fileExists(reportDir)) {
-                        publishHTML([
-                            reportDir: reportDir,
-                            reportFiles: 'index.html',
-                            reportName: 'JMeter Load Test Report',
-                            allowMissing: false,
-                            alwaysLinkToLastBuild: true,
-                            keepAll: true
-                        ])
-                    } else {
-                        echo "❌ HTML report folder does not exist: ${reportDir}"
-                    }
-                }
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'results/html_report',
+                    reportFiles: 'index.html',
+                    reportName: 'JMeter Load Test Report',
+                    useWrapperFileDirectly: true
+                ])
             }
         }
 
