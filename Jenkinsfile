@@ -151,12 +151,14 @@ pipeline {
         stage('Publish Performance Report') {
             steps {
                 perfReport(
+                    sourceDataFiles: 'results/results.jtl',
                     parsers: [
-                        [glob: "${RESULTS_DIR}/results.jtl", parser: 'JMeter']
+                        [parser: 'JMeter']
                     ]
                 )
             }
         }
+
 
 
     }
