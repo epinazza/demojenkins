@@ -109,36 +109,35 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                
-                // Ensure results folder exists and is writable
+                // Make sure results directory exists on the actual Docker volume path
                 sh '''
-                mkdir -p ${WORKSPACE}/results/html_report
-                chmod -R 777 ${WORKSPACE}/results
+                    mkdir -p /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report
+                    chmod -R 777 /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results
                 '''
-
-                // Run JMeter in Docker
                 sh """
-                docker run --rm \
-                --name jmeter-agent \
-                --network jenkins-net \
-                -v ${WORKSPACE}:/workspace \
-                -w /workspace \
-                alpine/jmeter:latest \
-                -n -t API_TestPlan.jmx \
-                -l results/results.jtl \
-                -e -o results/html_report
+                    docker run \
+                    --name jmeter-agent \
+                    --network ${NETWORK_NAME} \
+                    -v /etc/localtime:/etc/localtime:ro \
+                    -v /etc/timezone:/etc/timezone:ro \
+                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
+                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
+                    -w /workspace \
+                    ${JMETER_IMAGE} \
+                    -n -t /workspace/${JMX_FILE} \
+                    -l /${RESULTS_DIR}/results.jtl \
+                    -e -o /${RESULTS_DIR}/html_report
                 """
             }
         }
 
 
-
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "results/results.jtl, results/html_report/**", allowEmptyArchive: false
+                archiveArtifacts artifacts: "${RESULTS_DIR}/results.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
             }
         }
-
+        
         stage('Publish JMeter HTML Report') {
             steps {
                 publishHTML([
@@ -147,7 +146,8 @@ pipeline {
                     keepAll: true,
                     reportDir: 'results/html_report',
                     reportFiles: 'index.html',
-                    reportName: 'JMeter Load Test Report'
+                    reportName: 'JMeter Load Test Report',
+                    useWrapperFileDirectly: true
                 ])
             }
         }
