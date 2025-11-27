@@ -110,29 +110,25 @@ pipeline {
             steps {
                 echo "🏃 Running JMeter load test..."
                 sh """
-                    docker run \
-                    --name jmeter-agent \
-                    --network ${NETWORK_NAME} \
-                    -v /etc/localtime:/etc/localtime:ro \
-                    -v /etc/timezone:/etc/timezone:ro \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA:/workspace \
-                    -v /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results:/results \
-                    -w /workspace \
-                    ${JMETER_IMAGE} \
-                    -n -t /workspace/${JMX_FILE} \
-                    -l /${RESULTS_DIR}/results.jtl \
-                    -e -o /${RESULTS_DIR}/html_report
+                    docker run --rm \
+                        --name ${JMETER_CONTAINER} \
+                        --network ${NETWORK_NAME} \
+                        -v ${WORKSPACE}:/workspace \
+                        -w /workspace \
+                        ${JMETER_IMAGE} \
+                        -n -t ${JMX_FILE} \
+                        -l results/results.jtl \
+                        -e -o results/html_report
                 """
             }
         }
 
-
         stage('Archive JMeter Report') {
             steps {
-                archiveArtifacts artifacts: "${RESULTS_DIR}/results.jtl, ${RESULTS_DIR}/html_report/**", allowEmptyArchive: true
+                archiveArtifacts artifacts: "results/results.jtl, results/html_report/**", allowEmptyArchive: false
             }
         }
-        
+
         stage('Publish JMeter HTML Report') {
             steps {
                 publishHTML([
@@ -141,8 +137,7 @@ pipeline {
                     keepAll: true,
                     reportDir: 'results/html_report',
                     reportFiles: 'index.html',
-                    reportName: 'JMeter Load Test Report',
-                    useWrapperFileDirectly: true
+                    reportName: 'JMeter Load Test Report'
                 ])
             }
         }
