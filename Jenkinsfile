@@ -153,13 +153,11 @@ pipeline {
                 perfReport(
                     sourceDataFiles: 'results/results.jtl',
                     parsers: [
-                        [parser: 'JMeter']
+                        [$class: 'JMeterParser']
                     ]
                 )
             }
         }
-
-
 
     }
 
