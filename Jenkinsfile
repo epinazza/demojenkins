@@ -109,11 +109,7 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
-                // Make sure results directory exists on the actual Docker volume path
-                sh '''
-                    mkdir -p /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results/html_report
-                    chmod -R 777 /var/lib/docker/volumes/jenkins_home/_data/workspace/pipelineA/results
-                '''
+                
                 sh """
                     docker run \
                     --name jmeter-agent \
@@ -126,6 +122,7 @@ pipeline {
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
                     -l /${RESULTS_DIR}/results.jtl \
+                    -Jjmeter.save.saveservice.output_format=xml \
                     -e -o /${RESULTS_DIR}/html_report
                 """
             }
