@@ -122,7 +122,6 @@ pipeline {
                     ${JMETER_IMAGE} \
                     -n -t /workspace/${JMX_FILE} \
                     -l /${RESULTS_DIR}/results.jtl \
-                    -Jjmeter.save.saveservice.output_format=xml \
                     -e -o /${RESULTS_DIR}/html_report
                 """
             }
@@ -148,6 +147,15 @@ pipeline {
                 ])
             }
         }
+
+        stage('Publish Performance Report') {
+            steps {
+                perfReport parsers: [
+                    [glob: 'results/results.jtl', parser: 'JMeter']
+                ]
+            }
+        }
+
 
     }
 
