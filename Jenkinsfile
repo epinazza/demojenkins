@@ -109,7 +109,9 @@ pipeline {
         stage('Run JMeter Load Test') {
             steps {
                 echo "🏃 Running JMeter load test..."
+                // Ensure results directories exist in workspace before running JMeter
                 sh """
+                    mkdir -p ${WORKSPACE}/results/html_report
                     docker run --rm \
                         --name ${JMETER_CONTAINER} \
                         --network ${NETWORK_NAME} \
@@ -118,7 +120,7 @@ pipeline {
                         ${JMETER_IMAGE} \
                         -n -t ${JMX_FILE} \
                         -l results/results.jtl \
-                        -e -o results/html_report
+                        -e results/html_report
                 """
             }
         }
